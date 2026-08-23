@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>웨이브 슈터</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="crosshair"></div>
+
+  <div id="hud">
+    <div id="health-wrap">
+      <div id="health-label">HP</div>
+      <div id="health-bar"><div id="health-fill"></div></div>
+    </div>
+    <div id="score">SCORE 0</div>
+    <div id="wave">WAVE 1</div>
+  </div>
+
+  <div id="start-screen">
+    <h1>WAVE SHOOTER</h1>
+    <p>WASD 이동 &nbsp;|&nbsp; 마우스 시점 &nbsp;|&nbsp; 클릭 사격</p>
+    <p class="sub">적이 다가오기 전에 쏴서 처치하세요. 웨이브가 지날수록 더 많이, 더 빠르게 몰려옵니다.</p>
+    <button id="start-btn">클릭해서 시작</button>
+  </div>
+
+  <div id="gameover-screen" class="hidden">
+    <h1>GAME OVER</h1>
+    <p id="final-score">SCORE 0</p>
+    <button id="restart-btn">다시 시작</button>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

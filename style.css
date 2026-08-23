@@ -1,0 +1,142 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #fff;
+}
+
+canvas { display: block; }
+
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  mix-blend-mode: difference;
+}
+
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  z-index: 5;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+#health-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#health-label {
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+#health-bar {
+  width: 160px;
+  height: 14px;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+#health-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff4d4d, #ff8a3d);
+  transition: width 0.15s ease-out;
+}
+
+#score, #wave {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+#wave { margin-left: auto; }
+
+#start-screen, #gameover-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(ellipse at center, rgba(20,20,30,0.9), rgba(0,0,0,0.96));
+  z-index: 10;
+  text-align: center;
+  padding: 20px;
+}
+
+#start-screen h1, #gameover-screen h1 {
+  font-size: 42px;
+  letter-spacing: 4px;
+  font-weight: 800;
+}
+
+#start-screen p {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+#start-screen p.sub {
+  max-width: 420px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+#final-score {
+  font-size: 20px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+button {
+  margin-top: 12px;
+  padding: 12px 32px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #111;
+  background: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+button:hover { transform: scale(1.05); }
+button:active { transform: scale(0.97); }
+
+.hidden { display: none !important; }
+
+#hit-flash {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 0, 0, 0.25);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 4;
+  transition: opacity 0.3s ease;
+}
