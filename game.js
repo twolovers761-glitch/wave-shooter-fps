@@ -249,17 +249,22 @@ window.addEventListener('mousedown', (e) => {
 });
 
 let recoil = 0;
-const RECOIL_KICK = 0.032;
-const RECOIL_RECOVER = 0.4;
 const GUN_DAMAGE = 45;
-let recoilOffset = 0;
+
+// spring-damper recoil: a shot adds angular velocity (an impulse), then a
+// spring pulls the view back to center while damping bleeds off the motion,
+// same as a mass on a spring rather than a hand-tuned lerp back to zero.
+const RECOIL_STIFFNESS = 180; // spring constant (rad/s^2 per rad of offset)
+const RECOIL_DAMPING = 20; // damping coefficient (slightly underdamped for a little settle-bounce)
+const RECOIL_KICK_VEL = 2.4; // angular velocity added per shot (rad/s)
+let recoilOffset = 0; // current angular offset from the spring's rest position
+let recoilVel = 0; // current angular velocity of the recoil spring
 
 function shoot() {
   flashLight.intensity = 3;
   recoil = 0.08;
 
-  camera.rotateX(RECOIL_KICK);
-  recoilOffset += RECOIL_KICK;
+  recoilVel += RECOIL_KICK_VEL;
 
   raycaster.setFromCamera(center, camera);
   const meshes = enemies.map((en) => en.mesh);
@@ -403,6 +408,7 @@ function resetGame() {
   playerGrounded = true;
   eyeHeight = EYE_HEIGHT;
   recoilOffset = 0;
+  recoilVel = 0;
   knifeCooldown = 0;
   knifeSwing = 0;
   weaponIndex = 0;
@@ -458,12 +464,12 @@ function animate() {
     eyeHeight = THREE.MathUtils.lerp(eyeHeight, targetEyeHeight, delta * 10);
     camera.position.y = playerY + eyeHeight;
 
-    // recoil recovery (camera kicks up on shot, settles back down)
-    if (recoilOffset > 0.0001) {
-      const recover = Math.min(recoilOffset, RECOIL_RECOVER * delta);
-      camera.rotateX(-recover);
-      recoilOffset -= recover;
-    }
+    // recoil: damped spring pulls the kicked-up view back to center
+    const recoilAccel = -RECOIL_STIFFNESS * recoilOffset - RECOIL_DAMPING * recoilVel;
+    recoilVel += recoilAccel * delta;
+    const prevRecoilOffset = recoilOffset;
+    recoilOffset += recoilVel * delta;
+    camera.rotateX(recoilOffset - prevRecoilOffset);
 
     // weapon cooldowns / swing animation
     if (knifeCooldown > 0) knifeCooldown -= delta;
