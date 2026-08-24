@@ -90,6 +90,21 @@ const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.5), gunMat);
 gunBody.position.set(0.22, -0.22, -0.5);
 gunGroup.add(gunBody);
 camera.add(gunGroup);
+
+// ---------- knife view model ----------
+const knifeGroup = new THREE.Group();
+const bladeMat = new THREE.MeshStandardMaterial({ color: 0xc7d0da, roughness: 0.25, metalness: 0.8 });
+const handleMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.8 });
+const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.42), bladeMat);
+blade.position.set(0, 0, -0.24);
+const handle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.14), handleMat);
+handle.position.set(0, 0, 0.02);
+knifeGroup.add(blade, handle);
+knifeGroup.position.set(0.24, -0.24, -0.42);
+knifeGroup.rotation.x = -0.3;
+knifeGroup.visible = false;
+camera.add(knifeGroup);
+
 scene.add(camera);
 
 // muzzle flash
@@ -146,11 +161,45 @@ const BOUND = ARENA_SIZE - 1.5;
 
 // ---------- jump / obstacle collision ----------
 const EYE_HEIGHT = 1.7;
+const CROUCH_EYE_HEIGHT = 1.1;
 const GRAVITY = -18;
 const JUMP_SPEED = 8;
 const CLIMB_SPEED = 2.5;
 const PLAYER_RADIUS = 0.35;
 const ENEMY_RADIUS = 0.45;
+
+let eyeHeight = EYE_HEIGHT;
+
+// ---------- weapons ----------
+const WEAPONS = ['gun', 'knife'];
+let weaponIndex = 0;
+let currentWeapon = WEAPONS[weaponIndex];
+const weaponEl = document.getElementById('weapon');
+const KNIFE_SPEED_MULT = 1.35;
+const KNIFE_RANGE = 2.4;
+const KNIFE_DAMAGE = 100;
+const KNIFE_CONE_COS = Math.cos(THREE.MathUtils.degToRad(55));
+const KNIFE_COOLDOWN = 0.45;
+let knifeCooldown = 0;
+let knifeSwing = 0;
+
+function setWeapon(name) {
+  currentWeapon = name;
+  gunGroup.visible = name === 'gun';
+  knifeGroup.visible = name === 'knife';
+  weaponEl.textContent = name === 'gun' ? 'GUN' : 'KNIFE';
+}
+
+window.addEventListener(
+  'wheel',
+  (e) => {
+    if (gameState !== 'playing') return;
+    e.preventDefault();
+    weaponIndex = (weaponIndex + (e.deltaY > 0 ? 1 : -1) + WEAPONS.length) % WEAPONS.length;
+    setWeapon(WEAPONS[weaponIndex]);
+  },
+  { passive: false }
+);
 
 let playerY = 0;
 let playerVelY = 0;
@@ -195,13 +244,21 @@ const center = new THREE.Vector2(0, 0);
 
 window.addEventListener('mousedown', (e) => {
   if (gameState !== 'playing' || e.button !== 0) return;
-  shoot();
+  if (currentWeapon === 'gun') shoot();
+  else meleeAttack();
 });
 
 let recoil = 0;
+const RECOIL_KICK = 0.05;
+const RECOIL_RECOVER = 0.4;
+let recoilOffset = 0;
+
 function shoot() {
   flashLight.intensity = 3;
   recoil = 0.08;
+
+  camera.rotateX(RECOIL_KICK);
+  recoilOffset += RECOIL_KICK;
 
   raycaster.setFromCamera(center, camera);
   const meshes = enemies.map((en) => en.mesh);
@@ -211,6 +268,30 @@ function shoot() {
     const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
     if (enemy) damageEnemy(enemy, 34);
   }
+}
+
+function meleeAttack() {
+  if (knifeCooldown > 0) return;
+  knifeCooldown = KNIFE_COOLDOWN;
+  knifeSwing = 1;
+
+  const camDir = new THREE.Vector3();
+  camera.getWorldDirection(camDir);
+
+  let target = null;
+  let bestDot = KNIFE_CONE_COS;
+  for (const enemy of enemies) {
+    const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, camera.position);
+    const dist = toEnemy.length();
+    if (dist > KNIFE_RANGE) continue;
+    toEnemy.normalize();
+    const dot = toEnemy.dot(camDir);
+    if (dot > bestDot) {
+      bestDot = dot;
+      target = enemy;
+    }
+  }
+  if (target) damageEnemy(target, KNIFE_DAMAGE);
 }
 
 // ---------- enemies ----------
@@ -315,6 +396,12 @@ function resetGame() {
   playerY = 0;
   playerVelY = 0;
   playerGrounded = true;
+  eyeHeight = EYE_HEIGHT;
+  recoilOffset = 0;
+  knifeCooldown = 0;
+  knifeSwing = 0;
+  weaponIndex = 0;
+  setWeapon('gun');
   startTitle.textContent = 'WAVE SHOOTER';
   startBtn.textContent = '클릭해서 시작';
   needsWaveStart = true;
@@ -329,11 +416,14 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.1);
 
   if (gameState === 'playing') {
+    const crouching = !!keys['KeyC'];
+
     // movement
     const forward = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
     const strafe = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
     velocity.set(strafe, 0, forward);
-    if (velocity.lengthSq() > 0) velocity.normalize().multiplyScalar(MOVE_SPEED * delta);
+    const speedMult = crouching ? 0.5 : currentWeapon === 'knife' ? KNIFE_SPEED_MULT : 1;
+    if (velocity.lengthSq() > 0) velocity.normalize().multiplyScalar(MOVE_SPEED * speedMult * delta);
 
     controls.moveRight(velocity.x);
     controls.moveForward(velocity.z);
@@ -357,7 +447,23 @@ function animate() {
     } else {
       playerGrounded = false;
     }
-    camera.position.y = playerY + EYE_HEIGHT;
+
+    // crouch (smoothly lerp eye height)
+    const targetEyeHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+    eyeHeight = THREE.MathUtils.lerp(eyeHeight, targetEyeHeight, delta * 10);
+    camera.position.y = playerY + eyeHeight;
+
+    // recoil recovery (camera kicks up on shot, settles back down)
+    if (recoilOffset > 0.0001) {
+      const recover = Math.min(recoilOffset, RECOIL_RECOVER * delta);
+      camera.rotateX(-recover);
+      recoilOffset -= recover;
+    }
+
+    // weapon cooldowns / swing animation
+    if (knifeCooldown > 0) knifeCooldown -= delta;
+    knifeSwing = Math.max(0, knifeSwing - delta * 6);
+    knifeGroup.rotation.z = -knifeSwing * 1.1;
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
@@ -429,5 +535,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+setWeapon('gun');
 updateHUD();
 animate();

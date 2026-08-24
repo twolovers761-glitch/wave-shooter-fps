@@ -67,13 +67,21 @@ canvas { display: block; }
   transition: width 0.15s ease-out;
 }
 
-#score, #wave {
+#score, #wave, #weapon {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 1px;
 }
 
-#wave { margin-left: auto; }
+#weapon {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+}
+
+#wave { margin-left: 0; }
 
 #start-screen, #gameover-screen {
   position: fixed;
