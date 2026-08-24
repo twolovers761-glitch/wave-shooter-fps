@@ -177,7 +177,7 @@ let currentWeapon = WEAPONS[weaponIndex];
 const weaponEl = document.getElementById('weapon');
 const KNIFE_SPEED_MULT = 1.35;
 const KNIFE_RANGE = 2.4;
-const KNIFE_DAMAGE = 100;
+const KNIFE_DAMAGE = 55;
 const KNIFE_CONE_COS = Math.cos(THREE.MathUtils.degToRad(55));
 const KNIFE_COOLDOWN = 0.45;
 let knifeCooldown = 0;
@@ -249,7 +249,7 @@ window.addEventListener('mousedown', (e) => {
 });
 
 let recoil = 0;
-const RECOIL_KICK = 0.05;
+const RECOIL_KICK = 0.032;
 const RECOIL_RECOVER = 0.4;
 let recoilOffset = 0;
 
@@ -416,7 +416,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.1);
 
   if (gameState === 'playing') {
-    const crouching = !!keys['KeyC'];
+    const crouching = !!(keys['ControlLeft'] || keys['ControlRight']);
 
     // movement
     const forward = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
@@ -462,8 +462,11 @@ function animate() {
 
     // weapon cooldowns / swing animation
     if (knifeCooldown > 0) knifeCooldown -= delta;
-    knifeSwing = Math.max(0, knifeSwing - delta * 6);
-    knifeGroup.rotation.z = -knifeSwing * 1.1;
+    knifeSwing = Math.max(0, knifeSwing - delta * 4);
+    const swingShape = Math.sin((1 - knifeSwing) * Math.PI); // 0 -> 1 -> 0 across the slash
+    knifeGroup.rotation.z = -0.3 - swingShape * 1.3;
+    knifeGroup.rotation.y = swingShape * 0.7;
+    knifeGroup.position.z = -0.42 - swingShape * 0.16;
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
