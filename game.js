@@ -251,6 +251,7 @@ window.addEventListener('mousedown', (e) => {
 let recoil = 0;
 const RECOIL_KICK = 0.032;
 const RECOIL_RECOVER = 0.4;
+const GUN_DAMAGE = 45;
 let recoilOffset = 0;
 
 function shoot() {
@@ -266,7 +267,7 @@ function shoot() {
   if (hits.length > 0) {
     let hitMesh = hits[0].object;
     const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
-    if (enemy) damageEnemy(enemy, 34);
+    if (enemy) damageEnemy(enemy, GUN_DAMAGE);
   }
 }
 
@@ -298,6 +299,8 @@ function meleeAttack() {
 const enemies = [];
 const enemyGeo = new THREE.ConeGeometry(0.5, 1.6, 6);
 const enemyMatBase = 0xd94b4b;
+const ENEMY_BASE_HP = 100;
+const ENEMY_HP_PER_WAVE = 8;
 
 function spawnEnemy(speedMult) {
   const mat = new THREE.MeshStandardMaterial({ color: enemyMatBase, roughness: 0.6, emissive: 0x330000 });
@@ -309,10 +312,12 @@ function spawnEnemy(speedMult) {
   mesh.position.set(Math.cos(angle) * r, 0.8, Math.sin(angle) * r);
   scene.add(mesh);
 
+  const hp = ENEMY_BASE_HP + (wave - 1) * ENEMY_HP_PER_WAVE;
+
   enemies.push({
     mesh,
-    hp: 100,
-    maxHp: 100,
+    hp,
+    maxHp: hp,
     speed: (1.4 + Math.random() * 0.6) * speedMult,
     attackCooldown: 0,
     y: 0,
@@ -462,11 +467,12 @@ function animate() {
 
     // weapon cooldowns / swing animation
     if (knifeCooldown > 0) knifeCooldown -= delta;
-    knifeSwing = Math.max(0, knifeSwing - delta * 4);
+    knifeSwing = Math.max(0, knifeSwing - delta * 3.2);
     const swingShape = Math.sin((1 - knifeSwing) * Math.PI); // 0 -> 1 -> 0 across the slash
-    knifeGroup.rotation.z = -0.3 - swingShape * 1.3;
-    knifeGroup.rotation.y = swingShape * 0.7;
-    knifeGroup.position.z = -0.42 - swingShape * 0.16;
+    knifeGroup.rotation.z = -0.3 - swingShape * 2.1;
+    knifeGroup.rotation.y = swingShape * 1.5;
+    knifeGroup.position.x = 0.24 - swingShape * 0.32;
+    knifeGroup.position.z = -0.42 - swingShape * 0.3;
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
