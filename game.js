@@ -3,8 +3,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 
 // ---------- basic setup ----------
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0e14);
-scene.fog = new THREE.Fog(0x0a0e14, 15, 45);
+const FOG_COLOR = 0x0d1420;
+scene.background = new THREE.Color(FOG_COLOR);
+scene.fog = new THREE.Fog(FOG_COLOR, 15, 48);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0, 1.7, 0);
@@ -26,9 +27,44 @@ const hitFlash = document.createElement('div');
 hitFlash.id = 'hit-flash';
 document.body.appendChild(hitFlash);
 
+// ---------- sky ----------
+const skyGeo = new THREE.SphereGeometry(180, 24, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: {
+    topColor: { value: new THREE.Color(0x142238) },
+    bottomColor: { value: new THREE.Color(0x0d1420) },
+    glowColor: { value: new THREE.Color(0x2d5a7a) },
+  },
+  vertexShader: `
+    varying vec3 vWorldPos;
+    void main() {
+      vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vWorldPos;
+    uniform vec3 topColor;
+    uniform vec3 bottomColor;
+    uniform vec3 glowColor;
+    void main() {
+      float h = normalize(vWorldPos).y;
+      vec3 col = mix(bottomColor, topColor, smoothstep(-0.1, 0.6, h));
+      float horizonGlow = 1.0 - smoothstep(0.0, 0.35, abs(h));
+      col += glowColor * horizonGlow * 0.35;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
 // ---------- lighting ----------
-scene.add(new THREE.AmbientLight(0x6677aa, 0.6));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+scene.add(new THREE.AmbientLight(0x5a72a0, 0.55));
+scene.add(new THREE.HemisphereLight(0x3f6e8f, 0x14171f, 0.5));
+const dirLight = new THREE.DirectionalLight(0xfff0d8, 1.25);
 dirLight.position.set(10, 20, 8);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
@@ -41,25 +77,63 @@ scene.add(dirLight);
 // ---------- arena ----------
 const ARENA_SIZE = 30;
 
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a3240, roughness: 0.9 });
+// procedural noise texture so the floor/walls aren't flat, solid color
+function makeNoiseTexture(baseColor, noiseColor, size, cell) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+  for (let y = 0; y < size; y += cell) {
+    for (let x = 0; x < size; x += cell) {
+      if (Math.random() > 0.55) {
+        ctx.fillStyle = noiseColor;
+        ctx.globalAlpha = 0.08 + Math.random() * 0.12;
+        ctx.fillRect(x, y, cell, cell);
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+const groundTex = makeNoiseTexture('#262e3c', '#3a4658', 256, 8);
+groundTex.repeat.set(ARENA_SIZE, ARENA_SIZE);
+const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_SIZE * 2, ARENA_SIZE * 2), groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// grid lines for visual reference
-const grid = new THREE.GridHelper(ARENA_SIZE * 2, 30, 0x445066, 0x1c222c);
-grid.position.y = 0.01;
+// faint grid lines for movement/scale reference
+const grid = new THREE.GridHelper(ARENA_SIZE * 2, 30, 0x4d7ea8, 0x1c222c);
+grid.material.transparent = true;
+grid.material.opacity = 0.25;
+grid.position.y = 0.02;
 scene.add(grid);
 
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a4356, roughness: 0.8 });
+const wallTex = makeNoiseTexture('#333f52', '#455872', 256, 16);
+wallTex.repeat.set(ARENA_SIZE / 2, 1.5);
+const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.85 });
 const wallHeight = 6;
+const trimMat = new THREE.MeshStandardMaterial({
+  color: 0x4dd8ff,
+  emissive: 0x1f8fbd,
+  emissiveIntensity: 1.4,
+  roughness: 0.4,
+});
 function makeWall(w, d, x, z) {
   const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMat);
   wall.position.set(x, wallHeight / 2, z);
   wall.castShadow = true;
   wall.receiveShadow = true;
   scene.add(wall);
+
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.08, d * 0.98), trimMat);
+  trim.position.set(x, 0.35, z);
+  scene.add(trim);
 }
 makeWall(ARENA_SIZE * 2, 1, 0, -ARENA_SIZE);
 makeWall(ARENA_SIZE * 2, 1, 0, ARENA_SIZE);
@@ -84,23 +158,86 @@ for (let i = 0; i < 10; i++) {
 }
 
 // ---------- gun view model ----------
+// gunGroup stays at the origin and is what the per-frame bob/recoil code
+// nudges; gunModel carries the fixed "resting" offset so parts can be
+// positioned relative to each other instead of the camera.
 const gunGroup = new THREE.Group();
-const gunMat = new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.4, metalness: 0.6 });
-const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.5), gunMat);
-gunBody.position.set(0.22, -0.22, -0.5);
-gunGroup.add(gunBody);
+const gunModel = new THREE.Group();
+gunModel.position.set(0.25, -0.22, -0.42);
+gunGroup.add(gunModel);
+
+const gunMat = new THREE.MeshStandardMaterial({ color: 0x22282f, roughness: 0.45, metalness: 0.65 });
+const gunAccentMat = new THREE.MeshStandardMaterial({
+  color: 0x4dd8ff,
+  emissive: 0x1a5670,
+  emissiveIntensity: 1,
+  roughness: 0.4,
+});
+
+const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.095, 0.3), gunMat);
+receiver.position.set(0, 0, -0.05);
+gunModel.add(receiver);
+
+const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), gunMat);
+barrel.rotation.x = Math.PI / 2;
+barrel.position.set(0, 0.015, -0.36);
+gunModel.add(barrel);
+
+const grip = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.17, 0.065), gunMat);
+grip.position.set(0, -0.13, 0.08);
+grip.rotation.x = 0.25;
+gunModel.add(grip);
+
+const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13, 0.06), gunMat);
+magazine.position.set(0, -0.14, -0.05);
+magazine.rotation.x = -0.15;
+gunModel.add(magazine);
+
+const sight = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.032, 0.09), gunMat);
+sight.position.set(0, 0.075, -0.05);
+gunModel.add(sight);
+
+const gunAccent = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.26), gunAccentMat);
+gunAccent.position.set(0.052, -0.005, -0.05);
+gunModel.add(gunAccent);
+
 camera.add(gunGroup);
 
 // ---------- knife view model ----------
 const knifeGroup = new THREE.Group();
-const bladeMat = new THREE.MeshStandardMaterial({ color: 0xc7d0da, roughness: 0.25, metalness: 0.8 });
-const handleMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.8 });
-const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.42), bladeMat);
-blade.position.set(0, 0, -0.24);
-const handle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.14), handleMat);
-handle.position.set(0, 0, 0.02);
-knifeGroup.add(blade, handle);
-knifeGroup.position.set(0.24, -0.24, -0.42);
+const bladeMat = new THREE.MeshStandardMaterial({ color: 0xd7e0ea, roughness: 0.2, metalness: 0.85 });
+const guardMat = new THREE.MeshStandardMaterial({ color: 0x1e2530, roughness: 0.5, metalness: 0.6 });
+const handleMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.85 });
+
+// tapered blade: two shrinking flat segments plus a pyramid tip, all
+// axis-aligned so the taper reads correctly without any ambiguous rotation
+const bladeBase = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.012, 0.16), bladeMat);
+bladeBase.position.set(0, 0, -0.09);
+knifeGroup.add(bladeBase);
+
+const bladeMid = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.01, 0.14), bladeMat);
+bladeMid.position.set(0, 0, -0.24);
+knifeGroup.add(bladeMid);
+
+const bladeTip = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.09, 4), bladeMat);
+bladeTip.rotation.x = -Math.PI / 2;
+bladeTip.position.set(0, 0, -0.35);
+knifeGroup.add(bladeTip);
+
+const guard = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.022, 0.022), guardMat);
+guard.position.set(0, 0, -0.015);
+knifeGroup.add(guard);
+
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.15, 8), handleMat);
+handle.rotation.x = Math.PI / 2;
+handle.position.set(0, 0, 0.06);
+knifeGroup.add(handle);
+
+const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), guardMat);
+pommel.position.set(0, 0, 0.135);
+knifeGroup.add(pommel);
+
+knifeGroup.position.set(0.26, -0.24, -0.4);
 knifeGroup.rotation.x = -0.3;
 knifeGroup.visible = false;
 camera.add(knifeGroup);
@@ -109,7 +246,7 @@ scene.add(camera);
 
 // muzzle flash
 const flashLight = new THREE.PointLight(0xffcc66, 0, 4);
-flashLight.position.set(0.22, -0.18, -0.9);
+flashLight.position.set(0.25, -0.2, -0.95);
 camera.add(flashLight);
 
 // ---------- controls ----------
@@ -174,7 +311,9 @@ let eyeHeight = EYE_HEIGHT;
 const WEAPONS = ['gun', 'knife'];
 let weaponIndex = 0;
 let currentWeapon = WEAPONS[weaponIndex];
-const weaponEl = document.getElementById('weapon');
+const weaponLabelEl = document.getElementById('weapon-label');
+const crosshairEl = document.getElementById('crosshair');
+const hitMarkerEl = document.getElementById('hit-marker');
 const KNIFE_SPEED_MULT = 1.35;
 const KNIFE_RANGE = 2.4;
 const KNIFE_DAMAGE = 55;
@@ -187,7 +326,24 @@ function setWeapon(name) {
   currentWeapon = name;
   gunGroup.visible = name === 'gun';
   knifeGroup.visible = name === 'knife';
-  weaponEl.textContent = name === 'gun' ? 'GUN' : 'KNIFE';
+  weaponLabelEl.textContent = name === 'gun' ? 'GUN' : 'KNIFE';
+  crosshairEl.classList.toggle('knife', name === 'knife');
+}
+
+let hitMarkerTimeout = null;
+function showHitMarker() {
+  hitMarkerEl.classList.remove('active');
+  void hitMarkerEl.offsetWidth; // restart the CSS animation
+  hitMarkerEl.classList.add('active');
+  clearTimeout(hitMarkerTimeout);
+  hitMarkerTimeout = setTimeout(() => hitMarkerEl.classList.remove('active'), 250);
+}
+
+let crosshairFireTimeout = null;
+function pulseCrosshair() {
+  crosshairEl.classList.add('fire');
+  clearTimeout(crosshairFireTimeout);
+  crosshairFireTimeout = setTimeout(() => crosshairEl.classList.remove('fire'), 90);
 }
 
 window.addEventListener(
@@ -263,6 +419,7 @@ let recoilVel = 0; // current angular velocity of the recoil spring
 function shoot() {
   flashLight.intensity = 3;
   recoil = 0.08;
+  pulseCrosshair();
 
   recoilVel += RECOIL_KICK_VEL;
 
@@ -272,7 +429,10 @@ function shoot() {
   if (hits.length > 0) {
     let hitMesh = hits[0].object;
     const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
-    if (enemy) damageEnemy(enemy, GUN_DAMAGE);
+    if (enemy) {
+      damageEnemy(enemy, GUN_DAMAGE);
+      showHitMarker();
+    }
   }
 }
 
@@ -280,6 +440,7 @@ function meleeAttack() {
   if (knifeCooldown > 0) return;
   knifeCooldown = KNIFE_COOLDOWN;
   knifeSwing = 1;
+  pulseCrosshair();
 
   const camDir = new THREE.Vector3();
   camera.getWorldDirection(camDir);
@@ -297,24 +458,61 @@ function meleeAttack() {
       target = enemy;
     }
   }
-  if (target) damageEnemy(target, KNIFE_DAMAGE);
+  if (target) {
+    damageEnemy(target, KNIFE_DAMAGE);
+    showHitMarker();
+  }
 }
 
 // ---------- enemies ----------
 const enemies = [];
-const enemyGeo = new THREE.ConeGeometry(0.5, 1.6, 6);
-const enemyMatBase = 0xd94b4b;
 const ENEMY_BASE_HP = 100;
 const ENEMY_HP_PER_WAVE = 8;
 
+function buildEnemyMesh() {
+  const group = new THREE.Group();
+
+  const skinColor = 0x9c2b2b;
+  const bodyMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.55, emissive: 0x2a0000 });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0x7a1f1f, roughness: 0.5, emissive: 0x2a0000 });
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: 0xffb347,
+    emissive: 0xff7a1a,
+    emissiveIntensity: 2.2,
+    roughness: 0.3,
+  });
+
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.75, 4, 8), bodyMat);
+  body.position.y = 0.78;
+  body.castShadow = true;
+  group.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), headMat);
+  head.position.y = 1.48;
+  head.castShadow = true;
+  group.add(head);
+
+  const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), bodyMat);
+  horn.position.y = 1.82;
+  group.add(horn);
+
+  const eyeGeo = new THREE.SphereGeometry(0.055, 6, 6);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.12, 1.5, 0.24);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.12, 1.5, 0.24);
+  group.add(eyeL, eyeR);
+
+  group.userData.flashMats = [bodyMat, headMat];
+  return group;
+}
+
 function spawnEnemy(speedMult) {
-  const mat = new THREE.MeshStandardMaterial({ color: enemyMatBase, roughness: 0.6, emissive: 0x330000 });
-  const mesh = new THREE.Mesh(enemyGeo, mat);
-  mesh.castShadow = true;
+  const mesh = buildEnemyMesh();
 
   const angle = Math.random() * Math.PI * 2;
   const r = 16 + Math.random() * 8;
-  mesh.position.set(Math.cos(angle) * r, 0.8, Math.sin(angle) * r);
+  mesh.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
   scene.add(mesh);
 
   const hp = ENEMY_BASE_HP + (wave - 1) * ENEMY_HP_PER_WAVE;
@@ -333,8 +531,9 @@ function spawnEnemy(speedMult) {
 
 function damageEnemy(enemy, amount) {
   enemy.hp -= amount;
-  enemy.mesh.material.emissive.setHex(0xffffff);
-  setTimeout(() => enemy.mesh.material && enemy.mesh.material.emissive.setHex(0x330000), 60);
+  const flashMats = enemy.mesh.userData.flashMats;
+  flashMats.forEach((m) => m.emissive.setHex(0xffffff));
+  setTimeout(() => flashMats.forEach((m) => m.emissive.setHex(0x2a0000)), 60);
 
   if (enemy.hp <= 0) {
     scene.remove(enemy.mesh);
@@ -367,14 +566,23 @@ let score = 0;
 let gameState = 'menu'; // menu | playing | paused | gameover
 
 const healthFill = document.getElementById('health-fill');
-const scoreEl = document.getElementById('score');
-const waveEl = document.getElementById('wave');
+const healthNumEl = document.getElementById('health-num');
+const scoreValEl = document.getElementById('score-val');
+const waveValEl = document.getElementById('wave-val');
 const finalScoreEl = document.getElementById('final-score');
 
 function updateHUD() {
-  healthFill.style.width = Math.max(0, health) + '%';
-  scoreEl.textContent = 'SCORE ' + score;
-  waveEl.textContent = 'WAVE ' + wave;
+  const pct = Math.max(0, health);
+  healthFill.style.width = pct + '%';
+  healthFill.style.background =
+    pct > 50
+      ? 'linear-gradient(90deg, #3ddc84, #8fe74d)'
+      : pct > 25
+      ? 'linear-gradient(90deg, #ffb648, #ffd23d)'
+      : 'linear-gradient(90deg, #ff4d5e, #ff8a3d)';
+  healthNumEl.textContent = pct;
+  scoreValEl.textContent = score;
+  waveValEl.textContent = wave;
 }
 
 function takeDamage(amount) {
@@ -533,7 +741,7 @@ function animate() {
       } else {
         enemy.grounded = false;
       }
-      enemy.mesh.position.y = enemy.y + 0.8;
+      enemy.mesh.position.y = enemy.y;
     }
 
     // wave clear check

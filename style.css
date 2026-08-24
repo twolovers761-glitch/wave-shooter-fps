@@ -1,115 +1,273 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+:root {
+  --accent: #4dd8ff;
+  --accent-dim: #2a8fb8;
+  --danger: #ff4d5e;
+  --ok: #3ddc84;
+  --panel-bg: rgba(14, 18, 26, 0.72);
+  --panel-border: rgba(255, 255, 255, 0.14);
+}
+
 html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #000;
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  color: #fff;
+  background: #05070b;
+  font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  color: #eef3f8;
 }
 
 canvas { display: block; }
 
+h1, .weapon-dot, #wave, #score, #health-label {
+  font-family: 'Chakra Petch', 'Rajdhani', sans-serif;
+}
+
+/* subtle screen-edge darkening for focus */
+#vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: inset 0 0 160px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- crosshair ---------- */
 #crosshair {
   position: fixed;
   top: 50%;
   left: 50%;
-  width: 8px;
-  height: 8px;
-  margin: -4px 0 0 -4px;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  border-radius: 50%;
+  width: 0;
+  height: 0;
   pointer-events: none;
   z-index: 5;
-  mix-blend-mode: difference;
 }
 
+.ch-line {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+  transition: transform 0.08s ease-out;
+}
+
+.ch-top, .ch-bottom { width: 2px; height: 7px; left: -1px; }
+.ch-left, .ch-right { width: 7px; height: 2px; top: -1px; }
+.ch-top { top: -14px; }
+.ch-bottom { top: 7px; }
+.ch-left { left: -14px; }
+.ch-right { left: 7px; }
+
+.ch-dot {
+  position: absolute;
+  top: -1.5px;
+  left: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+#crosshair.fire .ch-top { transform: translateY(-3px); }
+#crosshair.fire .ch-bottom { transform: translateY(3px); }
+#crosshair.fire .ch-left { transform: translateX(-3px); }
+#crosshair.fire .ch-right { transform: translateX(3px); }
+
+#crosshair.knife .ch-line { background: rgba(255, 210, 130, 0.9); }
+#crosshair.knife .ch-dot { background: #ffb648; box-shadow: 0 0 4px #ffb648; }
+
+#hit-marker {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+}
+
+#hit-marker::before, #hit-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: center;
+}
+#hit-marker::before { transform: translate(-50%, -50%) rotate(45deg); }
+#hit-marker::after { transform: translate(-50%, -50%) rotate(-45deg); }
+
+#hit-marker.active {
+  opacity: 1;
+  animation: hitmark 0.25s ease-out forwards;
+}
+
+@keyframes hitmark {
+  0% { opacity: 1; transform: scale(0.6); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+/* ---------- HUD ---------- */
 #hud {
   position: fixed;
-  top: 16px;
-  left: 16px;
-  right: 16px;
+  top: 18px;
+  left: 18px;
+  right: 18px;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
   z-index: 5;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   pointer-events: none;
 }
 
 #health-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(6px);
+  padding: 8px 14px;
+  border-radius: 8px;
 }
 
 #health-label {
   font-weight: 700;
   letter-spacing: 1px;
   font-size: 13px;
-  opacity: 0.85;
+  color: var(--accent);
 }
 
 #health-bar {
-  width: 160px;
-  height: 14px;
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.4);
-  border-radius: 7px;
+  width: 150px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
   overflow: hidden;
 }
 
 #health-fill {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #ff4d4d, #ff8a3d);
-  transition: width 0.15s ease-out;
+  background: linear-gradient(90deg, var(--ok), #8fe74d);
+  transition: width 0.15s ease-out, background 0.25s ease-out;
 }
 
-#score, #wave, #weapon {
-  font-size: 15px;
+#health-num {
   font-weight: 700;
-  letter-spacing: 1px;
+  font-size: 14px;
+  min-width: 26px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
+
+#mid-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+#score span, #wave span { color: var(--accent); margin-left: 4px; }
 
 #weapon {
   margin-left: auto;
-  padding: 4px 12px;
-  background: rgba(255,255,255,0.12);
-  border: 1px solid rgba(255,255,255,0.3);
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(6px);
+  border-radius: 8px;
 }
 
-#wave { margin-left: 0; }
+.weapon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
 
+/* ---------- overlays ---------- */
 #start-screen, #gameover-screen {
   position: fixed;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  background: radial-gradient(ellipse at center, rgba(20,20,30,0.9), rgba(0,0,0,0.96));
+  background: radial-gradient(ellipse at center, rgba(18, 24, 34, 0.92), rgba(2, 3, 6, 0.98));
   z-index: 10;
-  text-align: center;
   padding: 20px;
 }
 
-#start-screen h1, #gameover-screen h1 {
-  font-size: 42px;
-  letter-spacing: 4px;
-  font-weight: 800;
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 40px 48px;
+  max-width: 480px;
 }
 
-#start-screen p {
-  font-size: 15px;
-  opacity: 0.9;
+#start-screen h1, #gameover-screen h1 {
+  font-size: 40px;
+  letter-spacing: 6px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 24px rgba(77, 216, 255, 0.55);
 }
+
+#gameover-screen h1.danger {
+  color: var(--danger);
+  text-shadow: 0 0 24px rgba(255, 77, 94, 0.55);
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 10px 22px;
+  font-size: 12px;
+}
+
+.controls-grid div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.controls-grid b {
+  font-family: 'Chakra Petch', sans-serif;
+  color: var(--accent);
+  font-size: 13px;
+  letter-spacing: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  padding: 4px 10px;
+}
+
+.controls-grid span { opacity: 0.65; }
 
 #start-screen p.sub {
-  max-width: 420px;
+  max-width: 400px;
   opacity: 0.6;
   font-size: 13px;
 }
@@ -118,23 +276,26 @@ canvas { display: block; }
   font-size: 20px;
   font-weight: 700;
   opacity: 0.9;
+  letter-spacing: 1px;
 }
 
 button {
-  margin-top: 12px;
-  padding: 12px 32px;
+  margin-top: 4px;
+  padding: 12px 34px;
+  font-family: 'Chakra Petch', sans-serif;
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 1px;
-  color: #111;
-  background: #fff;
+  letter-spacing: 2px;
+  color: #06121a;
+  background: var(--accent);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: transform 0.1s ease;
+  box-shadow: 0 0 18px rgba(77, 216, 255, 0.45);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-button:hover { transform: scale(1.05); }
+button:hover { transform: scale(1.05); box-shadow: 0 0 26px rgba(77, 216, 255, 0.65); }
 button:active { transform: scale(0.97); }
 
 .hidden { display: none !important; }
@@ -142,7 +303,7 @@ button:active { transform: scale(0.97); }
 #hit-flash {
   position: fixed;
   inset: 0;
-  background: rgba(255, 0, 0, 0.25);
+  background: rgba(255, 30, 40, 0.28);
   pointer-events: none;
   opacity: 0;
   z-index: 4;
