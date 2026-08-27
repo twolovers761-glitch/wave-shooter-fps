@@ -393,6 +393,51 @@ const rifleAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.4), rif
 rifleAccent.position.set(0.033, 0, -0.15);
 rifleModel.add(rifleAccent);
 
+// ---------- shotgun view model (third purchasable gun) ----------
+const shotgunModel = new THREE.Group();
+shotgunModel.position.set(0.26, -0.18, -0.28);
+shotgunModel.visible = false;
+gunGroup.add(shotgunModel);
+
+const shotgunWoodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a22, roughness: 0.75 });
+const shotgunAccentMat = new THREE.MeshStandardMaterial({
+  color: 0xff5d5d,
+  emissive: 0x801f1f,
+  emissiveIntensity: 1,
+  roughness: 0.4,
+});
+
+const sgReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.16), gunMat);
+sgReceiver.position.set(0, 0, -0.02);
+shotgunModel.add(sgReceiver);
+
+const sgBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.32, 8), gunMat);
+sgBarrel.rotation.x = Math.PI / 2;
+sgBarrel.position.set(0, 0.025, -0.28);
+shotgunModel.add(sgBarrel);
+
+const sgMagTube = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.28, 8), gunMat);
+sgMagTube.rotation.x = Math.PI / 2;
+sgMagTube.position.set(0, -0.012, -0.26);
+shotgunModel.add(sgMagTube);
+
+const sgPump = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.09), shotgunWoodMat);
+sgPump.position.set(0, -0.005, -0.22);
+shotgunModel.add(sgPump);
+
+const sgStock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.22), shotgunWoodMat);
+sgStock.position.set(0, -0.01, 0.15);
+shotgunModel.add(sgStock);
+
+const sgGrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.06), gunMat);
+sgGrip.position.set(0, -0.075, 0);
+sgGrip.rotation.x = -0.2;
+shotgunModel.add(sgGrip);
+
+const sgAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.3), shotgunAccentMat);
+sgAccent.position.set(0.032, 0.025, -0.15);
+shotgunModel.add(sgAccent);
+
 camera.add(gunGroup);
 
 // ---------- knife view model ----------
@@ -463,6 +508,21 @@ muzzleSprite.scale.set(0, 0, 0);
 muzzleSprite.position.set(0.26, -0.15, -0.57);
 camera.add(muzzleSprite);
 
+// ---------- intro / loading screen ----------
+const introScreen = document.getElementById('intro-screen');
+const loadingFill = document.getElementById('loading-fill');
+const introPrompt = document.getElementById('intro-prompt');
+
+requestAnimationFrame(() => loadingFill.classList.add('filling'));
+setTimeout(() => introPrompt.classList.remove('hidden'), 1300);
+
+introScreen.addEventListener('click', () => {
+  if (introPrompt.classList.contains('hidden')) return; // still "loading"
+  introScreen.classList.add('fade-out');
+  setTimeout(() => introScreen.classList.add('hidden'), 400);
+  document.getElementById('start-screen').classList.remove('hidden');
+});
+
 // ---------- controls ----------
 const controls = new PointerLockControls(camera, renderer.domElement);
 
@@ -531,6 +591,26 @@ fovSlider.addEventListener('input', () => {
   fovVal.textContent = v;
 });
 
+const NUMKEY_SETTING_KEY = 'waveShooterNumKeySwitch';
+function loadNumberKeySetting() {
+  try {
+    return localStorage.getItem(NUMKEY_SETTING_KEY) !== 'off';
+  } catch (e) {
+    return true;
+  }
+}
+let numberKeySwitchEnabled = loadNumberKeySetting();
+const numkeyToggle = document.getElementById('numkey-toggle');
+numkeyToggle.checked = numberKeySwitchEnabled;
+numkeyToggle.addEventListener('change', () => {
+  numberKeySwitchEnabled = numkeyToggle.checked;
+  try {
+    localStorage.setItem(NUMKEY_SETTING_KEY, numberKeySwitchEnabled ? 'on' : 'off');
+  } catch (e) {
+    // ignore - setting still applies for this session
+  }
+});
+
 // ---------- movement ----------
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -576,8 +656,20 @@ const GUN_CATALOG = {
     cooldown: 0.11,
     muzzle: { x: 0.25, y: -0.16, z: -0.84 },
   },
+  shotgun: {
+    id: 'shotgun',
+    name: '샷건 (Shotgun)',
+    price: 320,
+    damage: 15,
+    pellets: 7,
+    spread: 0.1,
+    recoilMult: 2.4,
+    auto: false,
+    cooldown: 0.65,
+    muzzle: { x: 0.26, y: -0.155, z: -0.72 },
+  },
 };
-const gunModelsById = { pistol: gunModel, rifle: rifleModel };
+const gunModelsById = { pistol: gunModel, rifle: rifleModel, shotgun: shotgunModel };
 
 const OWNED_GUNS_KEY = 'waveShooterOwnedGuns';
 const EQUIPPED_GUN_KEY = 'waveShooterEquippedGun';
@@ -677,6 +769,22 @@ window.addEventListener(
   { passive: false }
 );
 
+// number-key quick equip: 1/2/3 -> pistol/rifle/shotgun, only among owned guns
+const GUN_HOTKEY_ORDER = ['pistol', 'rifle', 'shotgun'];
+const GUN_HOTKEY_CODES = ['Digit1', 'Digit2', 'Digit3'];
+window.addEventListener('keydown', (e) => {
+  if (gameState !== 'playing' || !numberKeySwitchEnabled) return;
+  const idx = GUN_HOTKEY_CODES.indexOf(e.code);
+  if (idx === -1) return;
+  const gunId = GUN_HOTKEY_ORDER[idx];
+  if (!gunId || !ownedGuns.includes(gunId) || gunId === equippedGunId) return;
+  equippedGunId = gunId;
+  saveEquippedGun();
+  applyEquippedGunModel();
+  weaponIndex = WEAPONS.indexOf('gun');
+  setWeapon('gun');
+});
+
 let playerY = 0;
 let playerVelY = 0;
 let playerGrounded = true;
@@ -756,25 +864,36 @@ function tryFireGun() {
 }
 
 function shoot(def) {
+  const recoilMult = def.recoilMult || 1;
   flashLight.intensity = 3;
-  recoil = 0.08;
+  recoil = 0.08 * recoilMult;
   pulseCrosshair();
   muzzleSprite.material.opacity = 1;
   muzzleSprite.scale.set(0.32, 0.32, 0.32);
 
-  recoilVel += RECOIL_KICK_VEL;
+  recoilVel += RECOIL_KICK_VEL * recoilMult;
 
-  raycaster.setFromCamera(center, camera);
+  // shotguns fire several pellets in a small spread cone; other guns are
+  // just a single pellet with zero spread, so this path covers both
   const meshes = enemies.map((en) => en.mesh);
-  const hits = raycaster.intersectObjects(meshes, true);
-  if (hits.length > 0) {
-    let hitMesh = hits[0].object;
-    const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
-    if (enemy) {
-      damageEnemy(enemy, def.damage);
-      showHitMarker();
+  const pelletCount = def.pellets || 1;
+  const spread = def.spread || 0;
+  let anyHit = false;
+  for (let i = 0; i < pelletCount; i++) {
+    const jitterX = spread ? (Math.random() - 0.5) * spread : 0;
+    const jitterY = spread ? (Math.random() - 0.5) * spread : 0;
+    raycaster.setFromCamera(spread ? new THREE.Vector2(jitterX, jitterY) : center, camera);
+    const hits = raycaster.intersectObjects(meshes, true);
+    if (hits.length > 0) {
+      const hitMesh = hits[0].object;
+      const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
+      if (enemy) {
+        damageEnemy(enemy, def.damage);
+        anyHit = true;
+      }
     }
   }
+  if (anyHit) showHitMarker();
 }
 
 function meleeAttack() {

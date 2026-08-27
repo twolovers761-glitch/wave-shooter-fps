@@ -25,6 +25,92 @@ h1, .weapon-dot, #wave, #score, #health-label {
   font-family: 'Chakra Petch', 'Rajdhani', sans-serif;
 }
 
+/* ---------- intro / loading screen ---------- */
+#intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #10151f, #04060a 75%);
+  cursor: pointer;
+}
+
+#intro-screen.hidden { display: none !important; }
+#intro-screen.fade-out { animation: intro-fade-out 0.4s ease forwards; }
+
+@keyframes intro-fade-out {
+  to { opacity: 0; visibility: hidden; }
+}
+
+.intro-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.intro-content h1 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 54px;
+  letter-spacing: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(77, 216, 255, 0.65);
+  animation: intro-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes intro-glow {
+  0%, 100% { text-shadow: 0 0 20px rgba(77, 216, 255, 0.45); }
+  50% { text-shadow: 0 0 40px rgba(77, 216, 255, 0.85); }
+}
+
+.intro-tagline {
+  font-size: 14px;
+  letter-spacing: 2px;
+  opacity: 0.55;
+}
+
+.loading-bar {
+  width: 260px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+}
+
+.loading-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  box-shadow: 0 0 10px rgba(77, 216, 255, 0.6);
+}
+
+.loading-fill.filling {
+  animation: loading-progress 1.2s ease-out forwards;
+}
+
+@keyframes loading-progress {
+  to { width: 100%; }
+}
+
+.intro-prompt {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--accent);
+  animation: intro-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes intro-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 /* subtle screen-edge darkening for focus */
 #vignette {
   position: fixed;
@@ -491,6 +577,57 @@ button.back-btn:hover {
   background: var(--accent);
   box-shadow: 0 0 8px rgba(77, 216, 255, 0.6);
   cursor: pointer;
+}
+
+.settings-row.toggle-row {
+  grid-template-columns: 1fr auto;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #cfd8e0;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: rgba(77, 216, 255, 0.35);
+  border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(18px);
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(77, 216, 255, 0.6);
 }
 
 .controls-grid {

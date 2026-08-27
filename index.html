@@ -10,6 +10,15 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="intro-screen">
+    <div class="intro-content">
+      <h1>WAVE SHOOTER</h1>
+      <p class="intro-tagline">끝없이 몰려오는 웨이브에서 살아남아라</p>
+      <div class="loading-bar"><div id="loading-fill" class="loading-fill"></div></div>
+      <div id="intro-prompt" class="intro-prompt hidden">클릭하여 시작</div>
+    </div>
+  </div>
+
   <div id="vignette"></div>
   <div id="low-hp-overlay"></div>
   <div id="wave-banner"><span id="wave-banner-text">WAVE 1</span></div>
@@ -37,7 +46,7 @@
     <div id="weapon"><span class="weapon-dot"></span><span id="weapon-label">GUN</span></div>
   </div>
 
-  <div id="start-screen">
+  <div id="start-screen" class="hidden">
     <!-- main menu -->
     <div class="panel menu-panel" data-view="main">
       <h1>WAVE SHOOTER</h1>
@@ -55,6 +64,7 @@
         <div><b>SPACE</b><span>점프</span></div>
         <div><b>CTRL</b><span>앉기</span></div>
         <div><b>휠</b><span>무기 변경</span></div>
+        <div><b>1 2 3</b><span>총 장착</span></div>
       </div>
     </div>
 
@@ -87,6 +97,13 @@
           <label for="fov-slider">시야각 (FOV)</label>
           <input type="range" id="fov-slider" min="65" max="100" step="1" value="75" />
           <span id="fov-val" class="settings-val">75</span>
+        </div>
+        <div class="settings-row toggle-row">
+          <label for="numkey-toggle">숫자키(1/2/3)로 총 전환</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="numkey-toggle" checked />
+            <span class="toggle-slider"></span>
+          </label>
         </div>
       </div>
       <button class="back-btn" data-back>뒤로</button>
