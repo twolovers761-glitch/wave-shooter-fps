@@ -642,9 +642,9 @@ const GUN_CATALOG = {
     id: 'pistol',
     name: '권총 (Pistol)',
     price: 0,
-    damage: 45,
+    damage: 32,
     auto: false,
-    cooldown: 0.15,
+    cooldown: 0.18,
     muzzle: { x: 0.26, y: -0.155, z: -0.55 },
   },
   rifle: {
@@ -653,19 +653,19 @@ const GUN_CATALOG = {
     price: 250,
     damage: 26,
     auto: true,
-    cooldown: 0.11,
+    cooldown: 0.1,
     muzzle: { x: 0.25, y: -0.16, z: -0.84 },
   },
   shotgun: {
     id: 'shotgun',
     name: '샷건 (Shotgun)',
     price: 320,
-    damage: 22,
+    damage: 26,
     pellets: 7,
     spread: 0.1,
     recoilMult: 2.4,
     auto: false,
-    cooldown: 0.65,
+    cooldown: 0.75,
     muzzle: { x: 0.26, y: -0.155, z: -0.72 },
   },
 };
@@ -726,6 +726,8 @@ let currentWeapon = WEAPONS[weaponIndex];
 const weaponLabelEl = document.getElementById('weapon-label');
 const crosshairEl = document.getElementById('crosshair');
 const hitMarkerEl = document.getElementById('hit-marker');
+const critPopupEl = document.getElementById('crit-popup');
+const CRIT_MULTIPLIER = 2;
 const KNIFE_SPEED_MULT = 1.35;
 const KNIFE_RANGE = 3.2;
 const KNIFE_DAMAGE = 55;
@@ -743,12 +745,22 @@ function setWeapon(name) {
 }
 
 let hitMarkerTimeout = null;
-function showHitMarker() {
+let critPopupTimeout = null;
+function showHitMarker(isCrit) {
   hitMarkerEl.classList.remove('active');
+  hitMarkerEl.classList.toggle('crit', !!isCrit);
   void hitMarkerEl.offsetWidth; // restart the CSS animation
   hitMarkerEl.classList.add('active');
   clearTimeout(hitMarkerTimeout);
   hitMarkerTimeout = setTimeout(() => hitMarkerEl.classList.remove('active'), 250);
+
+  if (isCrit) {
+    critPopupEl.classList.remove('show');
+    void critPopupEl.offsetWidth;
+    critPopupEl.classList.add('show');
+    clearTimeout(critPopupTimeout);
+    critPopupTimeout = setTimeout(() => critPopupEl.classList.remove('show'), 500);
+  }
 }
 
 let crosshairFireTimeout = null;
@@ -886,6 +898,7 @@ function shoot(def) {
   const pelletCount = def.pellets || 1;
   const spread = def.spread || 0;
   let anyHit = false;
+  let anyCrit = false;
   for (let i = 0; i < pelletCount; i++) {
     const jitterX = spread ? (Math.random() - 0.5) * spread : 0;
     const jitterY = spread ? (Math.random() - 0.5) * spread : 0;
@@ -895,12 +908,14 @@ function shoot(def) {
       const hitMesh = hits[0].object;
       const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
       if (enemy) {
-        damageEnemy(enemy, def.damage);
+        const isHeadshot = !!hitMesh.userData.isHead;
+        damageEnemy(enemy, isHeadshot ? def.damage * CRIT_MULTIPLIER : def.damage);
         anyHit = true;
+        if (isHeadshot) anyCrit = true;
       }
     }
   }
-  if (anyHit) showHitMarker();
+  if (anyHit) showHitMarker(anyCrit);
 }
 
 function meleeAttack() {
@@ -957,17 +972,21 @@ function buildEnemyMesh() {
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), headMat);
   head.position.y = 1.48;
   head.castShadow = true;
+  head.userData.isHead = true;
   group.add(head);
 
   const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), bodyMat);
   horn.position.y = 1.82;
+  horn.userData.isHead = true;
   group.add(horn);
 
   const eyeGeo = new THREE.SphereGeometry(0.055, 6, 6);
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.12, 1.5, 0.24);
+  eyeL.userData.isHead = true;
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
   eyeR.position.set(0.12, 1.5, 0.24);
+  eyeR.userData.isHead = true;
   group.add(eyeL, eyeR);
 
   group.userData.flashMats = [bodyMat, headMat];
