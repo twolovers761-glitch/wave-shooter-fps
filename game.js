@@ -1148,7 +1148,9 @@ function cancelReload() {
 
 function startReload() {
   const def = GUN_CATALOG[equippedGunId];
-  if (isReloading || ammoState[def.id] >= def.magSize) return;
+  // allow a manual "tactical" reload even with a full mag - R should always
+  // do something visible when pressed, not silently no-op
+  if (isReloading) return;
   isReloading = true;
   reloadDuration = def.reloadTime;
   reloadTimer = def.reloadTime;
@@ -1603,14 +1605,20 @@ function animate() {
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
-    gunGroup.position.z = recoil + reloadDip * 0.05;
+    gunGroup.position.z = recoil + reloadDip * 0.14;
     flashLight.intensity = THREE.MathUtils.lerp(flashLight.intensity, 0, delta * 20);
     muzzleSprite.material.opacity = THREE.MathUtils.lerp(muzzleSprite.material.opacity, 0, delta * 18);
     const muzzleScale = THREE.MathUtils.lerp(muzzleSprite.scale.x, 0, delta * 14);
     muzzleSprite.scale.set(muzzleScale, muzzleScale, muzzleScale);
     const bob = Math.sin(performance.now() * 0.01) * (velocity.lengthSq() > 0 ? 0.015 : 0);
-    gunGroup.position.y = -0.02 + bob - reloadDip * 0.16;
-    gunGroup.rotation.x = -reloadDip * 0.55;
+    // reload dips the gun down and out of sight, tilts it as if looking at
+    // the magazine well, and twists it slightly toward the player - a big,
+    // unmistakable motion rather than a subtle nudge
+    gunGroup.position.y = -0.02 + bob - reloadDip * 0.34;
+    gunGroup.position.x = reloadDip * 0.05;
+    gunGroup.rotation.x = -reloadDip * 0.9;
+    gunGroup.rotation.y = reloadDip * 0.4;
+    gunGroup.rotation.z = reloadDip * 0.25;
 
     // enemies
     for (const enemy of enemies) {
