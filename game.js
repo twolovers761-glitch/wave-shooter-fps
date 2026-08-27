@@ -415,12 +415,14 @@ camera.add(muzzleSprite);
 const controls = new PointerLockControls(camera, renderer.domElement);
 
 const startScreen = document.getElementById('start-screen');
+const pauseScreen = document.getElementById('pause-screen');
 const gameoverScreen = document.getElementById('gameover-screen');
 const startBtn = document.getElementById('start-btn');
+const resumeBtn = document.getElementById('resume-btn');
 const restartBtn = document.getElementById('restart-btn');
-const startTitle = startScreen.querySelector('h1');
 
 startBtn.addEventListener('click', () => controls.lock());
+resumeBtn.addEventListener('click', () => controls.lock());
 restartBtn.addEventListener('click', () => {
   gameoverScreen.classList.add('hidden');
   resetGame();
@@ -431,6 +433,7 @@ let needsWaveStart = true;
 
 controls.addEventListener('lock', () => {
   startScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
   gameState = 'playing';
   if (needsWaveStart) {
     needsWaveStart = false;
@@ -440,10 +443,38 @@ controls.addEventListener('lock', () => {
 controls.addEventListener('unlock', () => {
   if (gameState === 'playing') {
     gameState = 'paused';
-    startTitle.textContent = 'PAUSED';
-    startBtn.textContent = '클릭해서 계속하기';
-    startScreen.classList.remove('hidden');
+    pauseScreen.classList.remove('hidden');
   }
+});
+
+// ---------- main menu: main / armory / settings sub-views ----------
+const menuPanels = document.querySelectorAll('#start-screen .menu-panel');
+function showMenuView(view) {
+  menuPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.view !== view));
+}
+document.querySelectorAll('#start-screen [data-open]').forEach((btn) => {
+  btn.addEventListener('click', () => showMenuView(btn.dataset.open));
+});
+document.querySelectorAll('#start-screen [data-back]').forEach((btn) => {
+  btn.addEventListener('click', () => showMenuView('main'));
+});
+
+// ---------- settings: mouse sensitivity + field of view ----------
+const sensSlider = document.getElementById('sens-slider');
+const sensVal = document.getElementById('sens-val');
+const fovSlider = document.getElementById('fov-slider');
+const fovVal = document.getElementById('fov-val');
+
+sensSlider.addEventListener('input', () => {
+  const v = parseFloat(sensSlider.value);
+  controls.pointerSpeed = v;
+  sensVal.textContent = v.toFixed(2);
+});
+fovSlider.addEventListener('input', () => {
+  const v = parseFloat(fovSlider.value);
+  camera.fov = v;
+  camera.updateProjectionMatrix();
+  fovVal.textContent = v;
 });
 
 // ---------- movement ----------
@@ -828,8 +859,6 @@ function resetGame() {
   knifeSwing = 0;
   weaponIndex = 0;
   setWeapon('gun');
-  startTitle.textContent = 'WAVE SHOOTER';
-  startBtn.textContent = '클릭해서 시작';
   needsWaveStart = true;
   updateHUD();
 }
@@ -987,6 +1016,31 @@ function animate() {
 
   renderer.render(scene, camera);
 }
+
+// ---------- armory: shows owned weapons per slot (more slots unlock via the shop later) ----------
+const WEAPON_CATALOG = {
+  gun: [{ id: 'pistol', name: '권총 (Pistol)', stats: `데미지 ${GUN_DAMAGE} · 표준 연사` }],
+  knife: [{ id: 'knife', name: '나이프 (Knife)', stats: `데미지 ${KNIFE_DAMAGE} · 근접 전용, 이동속도 증가` }],
+};
+const armoryListEl = document.getElementById('armory-list');
+function renderArmory() {
+  armoryListEl.innerHTML = '';
+  for (const slot of Object.values(WEAPON_CATALOG)) {
+    for (const item of slot) {
+      const row = document.createElement('div');
+      row.className = 'armory-item';
+      row.innerHTML = `
+        <div class="info">
+          <div class="name">${item.name}</div>
+          <div class="stats">${item.stats}</div>
+        </div>
+        <div class="equip-badge equipped">장착됨</div>
+      `;
+      armoryListEl.appendChild(row);
+    }
+  }
+}
+renderArmory();
 
 setWeapon('gun');
 updateHUD();
