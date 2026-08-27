@@ -808,6 +808,7 @@ const GUN_CATALOG = {
     damage: 24,
     burstCount: 3,
     burstDelay: 70, // ms between rounds within one burst
+    recoilMult: 0.5, // each round kicks less since 3 stack up per click
     auto: false,
     cooldown: 0.55, // cooldown starts once the whole burst is triggered
     muzzle: { x: 0.25, y: -0.17, z: -0.71 },
