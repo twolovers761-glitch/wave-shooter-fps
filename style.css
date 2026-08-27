@@ -33,6 +33,53 @@ h1, .weapon-dot, #wave, #score, #health-label {
   box-shadow: inset 0 0 160px 40px rgba(0, 0, 0, 0.55);
 }
 
+/* red pulse around the edges when health is low */
+#low-hp-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: inset 0 0 180px 60px rgba(255, 30, 40, 0.6);
+  opacity: 0;
+}
+
+#low-hp-overlay.active {
+  animation: lowhp-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes lowhp-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.65; }
+}
+
+/* big center-screen wave announcement */
+#wave-banner {
+  position: fixed;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  z-index: 6;
+  pointer-events: none;
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  color: var(--accent);
+  text-shadow: 0 0 28px rgba(77, 216, 255, 0.7);
+  opacity: 0;
+}
+
+#wave-banner.show {
+  animation: wave-banner-pop 2s ease-out forwards;
+}
+
+@keyframes wave-banner-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  75% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+}
+
 /* ---------- crosshair ---------- */
 #crosshair {
   position: fixed;
