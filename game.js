@@ -758,11 +758,18 @@ function pulseCrosshair() {
   crosshairFireTimeout = setTimeout(() => crosshairEl.classList.remove('fire'), 90);
 }
 
+// a single physical scroll "click" fires many small wheel events (especially
+// on trackpads), so debounce with a cooldown instead of switching on every one
+let lastWheelSwitchTime = 0;
+const WHEEL_SWITCH_COOLDOWN = 220; // ms
 window.addEventListener(
   'wheel',
   (e) => {
     if (gameState !== 'playing') return;
     e.preventDefault();
+    const now = performance.now();
+    if (now - lastWheelSwitchTime < WHEEL_SWITCH_COOLDOWN) return;
+    lastWheelSwitchTime = now;
     weaponIndex = (weaponIndex + (e.deltaY > 0 ? 1 : -1) + WEAPONS.length) % WEAPONS.length;
     setWeapon(WEAPONS[weaponIndex]);
   },
@@ -1261,13 +1268,19 @@ function animate() {
         0,
         camera.position.z - enemy.mesh.position.z
       );
-      const dist = dir.length();
+      const horizDist = dir.length();
       dir.normalize();
 
       enemy.mesh.rotation.y = Math.atan2(dir.x, dir.z);
 
+      // "close enough to attack" has to check height too - otherwise an
+      // enemy standing right under a platform the player is on reads as
+      // being in melee range and just stands there instead of climbing up
+      const heightGap = Math.abs(camera.position.y - (enemy.y + 1.5));
+      const inMeleeRange = horizDist <= 1.6 && heightGap <= 1.8;
+
       let blocked = false;
-      if (dist > 1.6) {
+      if (!inMeleeRange) {
         const tentative = new THREE.Vector3(
           enemy.mesh.position.x + dir.x * enemy.speed * delta,
           0,
