@@ -765,6 +765,7 @@ function damageEnemy(enemy, amount) {
     const idx = enemies.indexOf(enemy);
     if (idx !== -1) enemies.splice(idx, 1);
     score += 10;
+    addMoney(KILL_REWARD);
     updateHUD();
   }
 }
@@ -807,6 +808,45 @@ const waveValEl = document.getElementById('wave-val');
 const finalScoreEl = document.getElementById('final-score');
 const lowHpEl = document.getElementById('low-hp-overlay');
 
+// ---------- currency: earned per kill and per wave clear, persists across runs ----------
+const GOLD_STORAGE_KEY = 'waveShooterGold';
+const KILL_REWARD = 3;
+function waveClearReward(clearedWave) {
+  return 25 + clearedWave * 5;
+}
+
+function loadMoney() {
+  try {
+    const saved = parseInt(localStorage.getItem(GOLD_STORAGE_KEY), 10);
+    return Number.isFinite(saved) ? saved : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+function saveMoney() {
+  try {
+    localStorage.setItem(GOLD_STORAGE_KEY, String(money));
+  } catch (e) {
+    // storage unavailable (private mode, etc.) - just keep it in memory
+  }
+}
+
+let money = loadMoney();
+const goldValEl = document.getElementById('gold-val');
+const goldPopupEl = document.getElementById('gold-popup');
+const menuGoldValEl = document.getElementById('menu-gold-val');
+
+function addMoney(amount) {
+  money += amount;
+  saveMoney();
+  goldValEl.textContent = money;
+  menuGoldValEl.textContent = money;
+  goldPopupEl.textContent = '+' + amount;
+  goldPopupEl.classList.remove('pop');
+  void goldPopupEl.offsetWidth; // restart the CSS animation
+  goldPopupEl.classList.add('pop');
+}
+
 function updateHUD() {
   const pct = Math.max(0, health);
   healthFill.style.width = pct + '%';
@@ -819,6 +859,8 @@ function updateHUD() {
   healthNumEl.textContent = pct;
   scoreValEl.textContent = score;
   waveValEl.textContent = wave;
+  goldValEl.textContent = money;
+  menuGoldValEl.textContent = money;
   lowHpEl.classList.toggle('active', pct > 0 && pct <= 30);
 }
 
@@ -1004,6 +1046,7 @@ function animate() {
     // wave clear check
     if (waveActive && enemies.length === 0) {
       waveActive = false;
+      addMoney(waveClearReward(wave));
       wave += 1;
       setTimeout(() => {
         if (gameState === 'playing' || gameState === 'paused') startWave();

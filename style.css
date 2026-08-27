@@ -5,6 +5,7 @@
   --accent-dim: #2a8fb8;
   --danger: #ff4d5e;
   --ok: #3ddc84;
+  --gold: #ffd23d;
   --panel-bg: rgba(14, 18, 26, 0.72);
   --panel-border: rgba(255, 255, 255, 0.14);
 }
@@ -223,6 +224,30 @@ h1, .weapon-dot, #wave, #score, #health-label {
 }
 
 #score span, #wave span { color: var(--accent); margin-left: 4px; }
+#gold { position: relative; }
+#gold span#gold-val { color: var(--gold); margin-left: 4px; }
+
+#gold-popup {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  transform: translateX(100%);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#gold-popup.pop {
+  animation: gold-float 0.8s ease-out forwards;
+}
+
+@keyframes gold-float {
+  0% { opacity: 1; transform: translate(100%, 0); }
+  100% { opacity: 0; transform: translate(100%, -16px); }
+}
 
 #weapon {
   margin-left: auto;
@@ -287,6 +312,16 @@ h1, .weapon-dot, #wave, #score, #health-label {
 }
 
 /* ---------- main menu sub-views ---------- */
+.menu-gold {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  margin-top: -8px;
+}
+
+.menu-gold span { color: var(--gold); margin-left: 4px; }
+
 .menu-buttons {
   display: flex;
   gap: 10px;
