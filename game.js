@@ -869,6 +869,18 @@ const gunModelsById = {
   sniper: sniperModel,
 };
 
+// the specific part on each gun that acts out the reload: a detachable
+// magazine drops out and back in for most guns, while the pump shotgun
+// racks its pump instead. { part, axis, amount } - amount is the local
+// offset (in that axis) added at the peak of the reload, then undone.
+const gunReloadPartsById = {
+  pistol: { part: magBase, axis: 'y', amount: -0.22, restY: magBase.position.y },
+  rifle: { part: rifleMag, axis: 'y', amount: -0.24, restY: rifleMag.position.y },
+  shotgun: { part: sgPump, axis: 'z', amount: 0.09, restZ: sgPump.position.z },
+  burst: { part: brMag, axis: 'y', amount: -0.2, restY: brMag.position.y },
+  sniper: { part: snMag, axis: 'y', amount: -0.26, restY: snMag.position.y },
+};
+
 const OWNED_GUNS_KEY = 'waveShooterOwnedGuns';
 const EQUIPPED_GUN_KEY = 'waveShooterEquippedGun';
 
@@ -1148,9 +1160,7 @@ function cancelReload() {
 
 function startReload() {
   const def = GUN_CATALOG[equippedGunId];
-  // allow a manual "tactical" reload even with a full mag - R should always
-  // do something visible when pressed, not silently no-op
-  if (isReloading) return;
+  if (isReloading || ammoState[def.id] >= def.magSize) return;
   isReloading = true;
   reloadDuration = def.reloadTime;
   reloadTimer = def.reloadTime;
@@ -1605,20 +1615,27 @@ function animate() {
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
-    gunGroup.position.z = recoil + reloadDip * 0.14;
+    gunGroup.position.z = recoil + reloadDip * 0.06;
     flashLight.intensity = THREE.MathUtils.lerp(flashLight.intensity, 0, delta * 20);
     muzzleSprite.material.opacity = THREE.MathUtils.lerp(muzzleSprite.material.opacity, 0, delta * 18);
     const muzzleScale = THREE.MathUtils.lerp(muzzleSprite.scale.x, 0, delta * 14);
     muzzleSprite.scale.set(muzzleScale, muzzleScale, muzzleScale);
     const bob = Math.sin(performance.now() * 0.01) * (velocity.lengthSq() > 0 ? 0.015 : 0);
-    // reload dips the gun down and out of sight, tilts it as if looking at
-    // the magazine well, and twists it slightly toward the player - a big,
-    // unmistakable motion rather than a subtle nudge
-    gunGroup.position.y = -0.02 + bob - reloadDip * 0.34;
-    gunGroup.position.x = reloadDip * 0.05;
-    gunGroup.rotation.x = -reloadDip * 0.9;
-    gunGroup.rotation.y = reloadDip * 0.4;
-    gunGroup.rotation.z = reloadDip * 0.25;
+    // the gun leans down a little while reloading, as if looking at it -
+    // the actual reload action is the magazine/pump animation below
+    gunGroup.position.y = -0.02 + bob - reloadDip * 0.1;
+    gunGroup.rotation.x = -reloadDip * 0.35;
+
+    // reload action: the equipped gun's magazine drops out and slides back
+    // in (or, for the pump shotgun, the pump racks back and forward)
+    const reloadPart = gunReloadPartsById[equippedGunId];
+    if (reloadPart) {
+      if (reloadPart.axis === 'y') {
+        reloadPart.part.position.y = reloadPart.restY + reloadDip * reloadPart.amount;
+      } else {
+        reloadPart.part.position.z = reloadPart.restZ + reloadDip * reloadPart.amount;
+      }
+    }
 
     // enemies
     for (const enemy of enemies) {
