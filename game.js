@@ -510,19 +510,40 @@ const snReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.06, 0.3), gunMa
 snReceiver.position.set(0, 0, -0.05);
 sniperModel.add(snReceiver);
 
-const snBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.55, 8), gunMat);
+const snBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.55, 8), gunMat);
 snBarrel.rotation.x = Math.PI / 2;
 snBarrel.position.set(0, 0.005, -0.55);
 sniperModel.add(snBarrel);
+
+// muzzle brake: a wider stub at the barrel tip for a heavy-caliber look
+const snMuzzleBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.05, 8), gunMat);
+snMuzzleBrake.rotation.x = Math.PI / 2;
+snMuzzleBrake.position.set(0, 0.005, -0.8);
+sniperModel.add(snMuzzleBrake);
+
+// picatinny-style rail connecting the receiver to the scope mount
+const snRail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.012, 0.24), gunMat);
+snRail.position.set(0, 0.038, -0.14);
+sniperModel.add(snRail);
 
 const snScopeRiser = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.015, 0.06), gunMat);
 snScopeRiser.position.set(0, 0.045, -0.1);
 sniperModel.add(snScopeRiser);
 
-const snScopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 10), gunMat);
+const snScopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.18, 10), gunMat);
 snScopeTube.rotation.x = Math.PI / 2;
-snScopeTube.position.set(0, 0.075, -0.1);
+snScopeTube.position.set(0, 0.078, -0.1);
 sniperModel.add(snScopeTube);
+
+// adjustment turret knobs on top of the scope
+const turretGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.02, 8);
+const snTurretTop = new THREE.Mesh(turretGeo, sniperAccentMat);
+snTurretTop.position.set(0, 0.104, -0.13);
+sniperModel.add(snTurretTop);
+const snTurretSide = new THREE.Mesh(turretGeo, sniperAccentMat);
+snTurretSide.rotation.z = Math.PI / 2;
+snTurretSide.position.set(0.034, 0.078, -0.13);
+sniperModel.add(snTurretSide);
 
 const snScopeLensFront = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 10), scopeGlassMat);
 snScopeLensFront.rotation.x = Math.PI / 2;
@@ -537,6 +558,11 @@ sniperModel.add(snScopeLensRear);
 const snStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.28), gunMat);
 snStock.position.set(0, -0.005, 0.19);
 sniperModel.add(snStock);
+
+// raised cheek rest so the sightline lines up with the scope
+const snCheekRest = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.16), shotgunWoodMat);
+snCheekRest.position.set(0, 0.028, 0.16);
+sniperModel.add(snCheekRest);
 
 const snGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
 snGrip.position.set(0, -0.075, -0.05);
@@ -778,6 +804,8 @@ const GUN_CATALOG = {
     damage: 32,
     auto: false,
     cooldown: 0.18,
+    magSize: 10,
+    reloadTime: 1.0,
     muzzle: { x: 0.26, y: -0.155, z: -0.55 },
   },
   rifle: {
@@ -787,6 +815,8 @@ const GUN_CATALOG = {
     damage: 26,
     auto: true,
     cooldown: 0.1,
+    magSize: 25,
+    reloadTime: 1.6,
     muzzle: { x: 0.25, y: -0.16, z: -0.84 },
   },
   shotgun: {
@@ -799,6 +829,8 @@ const GUN_CATALOG = {
     recoilMult: 2.4,
     auto: false,
     cooldown: 0.75,
+    magSize: 6,
+    reloadTime: 2.2,
     muzzle: { x: 0.26, y: -0.155, z: -0.72 },
   },
   burst: {
@@ -811,6 +843,8 @@ const GUN_CATALOG = {
     recoilMult: 0.5, // each round kicks less since 3 stack up per click
     auto: false,
     cooldown: 0.55, // cooldown starts once the whole burst is triggered
+    magSize: 21, // 7 bursts per magazine
+    reloadTime: 1.8,
     muzzle: { x: 0.25, y: -0.17, z: -0.71 },
   },
   sniper: {
@@ -820,7 +854,10 @@ const GUN_CATALOG = {
     damage: 100,
     auto: false,
     cooldown: 1.15,
+    recoilMult: 3.2, // heaviest kick in the catalog
     zoomFov: 25, // FOV while aiming down the scope (right-click)
+    magSize: 5,
+    reloadTime: 2.4,
     muzzle: { x: 0.25, y: -0.155, z: -1.03 },
   },
 };
@@ -911,6 +948,8 @@ function setWeapon(name) {
     scopeOverlayEl.classList.remove('active');
     crosshairEl.classList.remove('hidden');
   }
+
+  updateAmmoHUD();
 }
 
 let hitMarkerTimeout = null;
@@ -969,6 +1008,7 @@ window.addEventListener('keydown', (e) => {
   equippedGunId = gunId;
   saveEquippedGun();
   applyEquippedGunModel();
+  cancelReload();
   weaponIndex = WEAPONS.indexOf('gun');
   setWeapon('gun');
 });
@@ -1068,15 +1108,74 @@ const RECOIL_KICK_VEL = 2.4; // angular velocity added per shot (rad/s)
 let recoilOffset = 0; // current angular offset from the spring's rest position
 let recoilVel = 0; // current angular velocity of the recoil spring
 
-function tryFireGun() {
-  if (gunFireTimer > 0) return;
+// ---------- ammo & reload ----------
+// each gun keeps its own magazine; switching guns keeps whatever ammo that
+// gun had left, but cancels any reload in progress
+let ammoState = {};
+function refillAllAmmo() {
+  for (const id in GUN_CATALOG) ammoState[id] = GUN_CATALOG[id].magSize;
+}
+refillAllAmmo();
+
+let isReloading = false;
+let reloadTimer = 0;
+let reloadDuration = 0;
+
+const ammoHudEl = document.getElementById('ammo-hud');
+const ammoCurrentEl = document.getElementById('ammo-current');
+const ammoMaxEl = document.getElementById('ammo-max');
+const reloadBarEl = document.getElementById('reload-bar');
+const reloadBarFillEl = document.getElementById('reload-bar-fill');
+
+function updateAmmoHUD() {
+  if (currentWeapon !== 'gun') {
+    ammoHudEl.classList.add('hidden');
+    return;
+  }
+  ammoHudEl.classList.remove('hidden');
   const def = GUN_CATALOG[equippedGunId];
+  ammoCurrentEl.textContent = ammoState[def.id];
+  ammoMaxEl.textContent = def.magSize;
+  ammoHudEl.classList.toggle('empty', ammoState[def.id] <= 0 && !isReloading);
+  reloadBarEl.classList.toggle('hidden', !isReloading);
+}
+
+function cancelReload() {
+  isReloading = false;
+  reloadTimer = 0;
+  reloadDuration = 0;
+}
+
+function startReload() {
+  const def = GUN_CATALOG[equippedGunId];
+  if (isReloading || ammoState[def.id] >= def.magSize) return;
+  isReloading = true;
+  reloadDuration = def.reloadTime;
+  reloadTimer = def.reloadTime;
+  reloadBarFillEl.style.animation = 'none';
+  void reloadBarFillEl.offsetWidth; // restart the CSS animation with the new duration
+  reloadBarFillEl.style.animation = `reload-fill ${def.reloadTime}s linear forwards`;
+  updateAmmoHUD();
+}
+
+window.addEventListener('keydown', (e) => {
+  if (gameState !== 'playing' || currentWeapon !== 'gun') return;
+  if (e.code === 'KeyR') startReload();
+});
+
+function tryFireGun() {
+  if (gunFireTimer > 0 || isReloading) return;
+  const def = GUN_CATALOG[equippedGunId];
+  if ((ammoState[def.id] || 0) <= 0) {
+    startReload();
+    return;
+  }
   gunFireTimer = def.cooldown;
 
   if (def.burstCount) {
     for (let i = 0; i < def.burstCount; i++) {
       setTimeout(() => {
-        if (gameState === 'playing') shoot(def);
+        if (gameState === 'playing' && !isReloading && (ammoState[def.id] || 0) > 0) shoot(def);
       }, i * (def.burstDelay || 70));
     }
   } else {
@@ -1085,6 +1184,8 @@ function tryFireGun() {
 }
 
 function shoot(def) {
+  ammoState[def.id] = Math.max(0, (ammoState[def.id] || 0) - 1);
+  updateAmmoHUD();
   const recoilMult = def.recoilMult || 1;
   flashLight.intensity = 3;
   recoil = 0.08 * recoilMult;
@@ -1405,6 +1506,8 @@ function resetGame() {
   scopeOverlayEl.classList.remove('active');
   camera.fov = baseFov;
   camera.updateProjectionMatrix();
+  refillAllAmmo();
+  cancelReload();
   weaponIndex = 0;
   setWeapon('gun');
   needsWaveStart = true;
@@ -1477,6 +1580,19 @@ function animate() {
     if (mouseHeld && currentWeapon === 'gun' && GUN_CATALOG[equippedGunId].auto) {
       tryFireGun();
     }
+
+    // reload timer + the dip shape used for the reload animation below
+    let reloadDip = 0;
+    if (isReloading) {
+      reloadTimer -= delta;
+      if (reloadTimer <= 0) {
+        ammoState[equippedGunId] = GUN_CATALOG[equippedGunId].magSize;
+        cancelReload();
+        updateAmmoHUD();
+      } else {
+        reloadDip = Math.sin((1 - reloadTimer / reloadDuration) * Math.PI); // 0 -> 1 -> 0
+      }
+    }
     if (knifeCooldown > 0) knifeCooldown -= delta;
     knifeSwing = Math.max(0, knifeSwing - delta * 3.2);
     const swingShape = Math.sin((1 - knifeSwing) * Math.PI); // 0 -> 1 -> 0 across the slash
@@ -1487,13 +1603,14 @@ function animate() {
 
     // gun feel
     recoil = THREE.MathUtils.lerp(recoil, 0, delta * 10);
-    gunGroup.position.z = recoil;
+    gunGroup.position.z = recoil + reloadDip * 0.05;
     flashLight.intensity = THREE.MathUtils.lerp(flashLight.intensity, 0, delta * 20);
     muzzleSprite.material.opacity = THREE.MathUtils.lerp(muzzleSprite.material.opacity, 0, delta * 18);
     const muzzleScale = THREE.MathUtils.lerp(muzzleSprite.scale.x, 0, delta * 14);
     muzzleSprite.scale.set(muzzleScale, muzzleScale, muzzleScale);
     const bob = Math.sin(performance.now() * 0.01) * (velocity.lengthSq() > 0 ? 0.015 : 0);
-    gunGroup.position.y = -0.02 + bob;
+    gunGroup.position.y = -0.02 + bob - reloadDip * 0.16;
+    gunGroup.rotation.x = -reloadDip * 0.55;
 
     // enemies
     for (const enemy of enemies) {
@@ -1612,6 +1729,7 @@ function renderArmory() {
         equippedGunId = gunId;
         saveEquippedGun();
         applyEquippedGunModel();
+        cancelReload();
         setWeapon(currentWeapon);
         renderArmory();
       });

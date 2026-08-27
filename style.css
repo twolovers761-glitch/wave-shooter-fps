@@ -427,6 +427,64 @@ h1, .weapon-dot, #wave, #score, #health-label {
   box-shadow: 0 0 6px var(--accent);
 }
 
+/* ---------- ammo / reload ---------- */
+#ammo-hud {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.ammo-numbers {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.ammo-sep { opacity: 0.4; margin: 0 3px; }
+#ammo-max { font-size: 18px; opacity: 0.55; }
+
+#ammo-hud.empty .ammo-numbers { color: var(--danger); animation: ammo-empty-pulse 0.6s ease-in-out infinite; }
+
+@keyframes ammo-empty-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.ammo-hint {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.5;
+}
+
+#reload-bar {
+  width: 120px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+}
+
+#reload-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+}
+
+@keyframes reload-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
 /* ---------- overlays ---------- */
 #start-screen, #pause-screen, #gameover-screen {
   position: fixed;
