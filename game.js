@@ -660,7 +660,7 @@ const GUN_CATALOG = {
     id: 'shotgun',
     name: '샷건 (Shotgun)',
     price: 320,
-    damage: 15,
+    damage: 22,
     pellets: 7,
     spread: 0.1,
     recoilMult: 2.4,
