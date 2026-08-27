@@ -45,6 +45,7 @@
       <div class="menu-buttons">
         <button id="start-btn">시작</button>
         <button class="secondary" data-open="armory">무기고</button>
+        <button class="secondary" data-open="shop">상점</button>
         <button class="secondary" data-open="settings">설정</button>
       </div>
       <div class="controls-grid">
@@ -62,6 +63,14 @@
       <h1>무기고</h1>
       <div id="armory-list" class="armory-list"></div>
       <p class="sub">상점에서 새 무기를 구매하면 여기서 장착할 수 있어요.</p>
+      <button class="back-btn" data-back>뒤로</button>
+    </div>
+
+    <!-- shop: spend gold on new weapons -->
+    <div class="panel menu-panel hidden" data-view="shop">
+      <h1>상점</h1>
+      <div class="menu-gold">GOLD <span id="shop-gold-val">0</span></div>
+      <div id="shop-list" class="armory-list"></div>
       <button class="back-btn" data-back>뒤로</button>
     </div>
 

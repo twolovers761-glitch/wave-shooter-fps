@@ -341,6 +341,58 @@ const gunAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.19), gunA
 gunAccent.position.set(0.037, 0.045, -0.06);
 gunModel.add(gunAccent);
 
+// ---------- assault rifle view model (second purchasable gun) ----------
+const rifleModel = new THREE.Group();
+rifleModel.position.set(0.25, -0.17, -0.22);
+rifleModel.visible = false;
+gunGroup.add(rifleModel);
+
+const rifleAccentMat = new THREE.MeshStandardMaterial({
+  color: 0xff9d4d,
+  emissive: 0x7a3d10,
+  emissiveIntensity: 1,
+  roughness: 0.4,
+});
+
+const rifleReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.065, 0.34), gunMat);
+rifleReceiver.position.set(0, 0, -0.05);
+rifleModel.add(rifleReceiver);
+
+const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.4, 8), gunMat);
+rifleBarrel.rotation.x = Math.PI / 2;
+rifleBarrel.position.set(0, 0.008, -0.42);
+rifleModel.add(rifleBarrel);
+
+const rifleHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.18), gunMat);
+rifleHandguard.position.set(0, -0.008, -0.28);
+rifleModel.add(rifleHandguard);
+
+const rifleStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.2), gunMat);
+rifleStock.position.set(0, -0.005, 0.17);
+rifleModel.add(rifleStock);
+
+const rifleGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.11, 0.05), gunMat);
+rifleGrip.position.set(0, -0.085, -0.02);
+rifleGrip.rotation.x = -0.15;
+rifleModel.add(rifleGrip);
+
+const rifleMag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.05), gunMat);
+rifleMag.position.set(0, -0.1, -0.1);
+rifleMag.rotation.x = 0.25;
+rifleModel.add(rifleMag);
+
+const rifleFrontSight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.035, 0.01), gunMat);
+rifleFrontSight.position.set(0, 0.035, -0.4);
+rifleModel.add(rifleFrontSight);
+
+const rifleRearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.02), gunMat);
+rifleRearSight.position.set(0, 0.05, 0.06);
+rifleModel.add(rifleRearSight);
+
+const rifleAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.4), rifleAccentMat);
+rifleAccent.position.set(0.033, 0, -0.15);
+rifleModel.add(rifleAccent);
+
 camera.add(gunGroup);
 
 // ---------- knife view model ----------
@@ -451,6 +503,8 @@ controls.addEventListener('unlock', () => {
 const menuPanels = document.querySelectorAll('#start-screen .menu-panel');
 function showMenuView(view) {
   menuPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.view !== view));
+  if (view === 'armory') renderArmory();
+  if (view === 'shop') renderShop();
 }
 document.querySelectorAll('#start-screen [data-open]').forEach((btn) => {
   btn.addEventListener('click', () => showMenuView(btn.dataset.open));
@@ -500,6 +554,79 @@ const ENEMY_RADIUS = 0.45;
 
 let eyeHeight = EYE_HEIGHT;
 
+// ---------- guns: catalog of purchasable ranged weapons ----------
+// each entry's muzzle offset is that gun's barrel-tip position in camera
+// space, used to reposition the shared flash light/sprite when equipped
+const GUN_CATALOG = {
+  pistol: {
+    id: 'pistol',
+    name: '권총 (Pistol)',
+    price: 0,
+    damage: 45,
+    auto: false,
+    cooldown: 0.15,
+    muzzle: { x: 0.26, y: -0.155, z: -0.55 },
+  },
+  rifle: {
+    id: 'rifle',
+    name: '돌격소총 (Assault Rifle)',
+    price: 250,
+    damage: 26,
+    auto: true,
+    cooldown: 0.11,
+    muzzle: { x: 0.25, y: -0.16, z: -0.84 },
+  },
+};
+const gunModelsById = { pistol: gunModel, rifle: rifleModel };
+
+const OWNED_GUNS_KEY = 'waveShooterOwnedGuns';
+const EQUIPPED_GUN_KEY = 'waveShooterEquippedGun';
+
+function loadOwnedGuns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(OWNED_GUNS_KEY));
+    if (Array.isArray(saved) && saved.length) return saved.filter((id) => GUN_CATALOG[id]);
+  } catch (e) {
+    // ignore malformed/unavailable storage
+  }
+  return ['pistol'];
+}
+function saveOwnedGuns() {
+  try {
+    localStorage.setItem(OWNED_GUNS_KEY, JSON.stringify(ownedGuns));
+  } catch (e) {
+    // ignore - purchase still applies for this session
+  }
+}
+function loadEquippedGun() {
+  try {
+    const saved = localStorage.getItem(EQUIPPED_GUN_KEY);
+    if (saved && GUN_CATALOG[saved]) return saved;
+  } catch (e) {
+    // ignore
+  }
+  return 'pistol';
+}
+function saveEquippedGun() {
+  try {
+    localStorage.setItem(EQUIPPED_GUN_KEY, equippedGunId);
+  } catch (e) {
+    // ignore
+  }
+}
+
+let ownedGuns = loadOwnedGuns();
+let equippedGunId = loadEquippedGun();
+if (!ownedGuns.includes(equippedGunId)) equippedGunId = 'pistol';
+
+// swaps the visible gun model and moves the shared muzzle flash to match
+function applyEquippedGunModel() {
+  for (const id in gunModelsById) gunModelsById[id].visible = id === equippedGunId;
+  const def = GUN_CATALOG[equippedGunId];
+  flashLight.position.set(def.muzzle.x, def.muzzle.y, def.muzzle.z);
+  muzzleSprite.position.set(def.muzzle.x, def.muzzle.y + 0.01, def.muzzle.z - 0.02);
+}
+
 // ---------- weapons ----------
 const WEAPONS = ['gun', 'knife'];
 let weaponIndex = 0;
@@ -519,7 +646,7 @@ function setWeapon(name) {
   currentWeapon = name;
   gunGroup.visible = name === 'gun';
   knifeGroup.visible = name === 'knife';
-  weaponLabelEl.textContent = name === 'gun' ? 'GUN' : 'KNIFE';
+  weaponLabelEl.textContent = name === 'gun' ? GUN_CATALOG[equippedGunId].id.toUpperCase() : 'KNIFE';
   crosshairEl.classList.toggle('knife', name === 'knife');
 }
 
@@ -591,14 +718,26 @@ function resolveObstacleCollision(pos, feetY, radius) {
 const raycaster = new THREE.Raycaster();
 const center = new THREE.Vector2(0, 0);
 
+// gun fire is held-triggered so automatic weapons can repeat while the
+// button stays down; semi-auto guns just have a cooldown long enough that
+// holding does nothing extra
+let mouseHeld = false;
+let gunFireTimer = 0;
+
 window.addEventListener('mousedown', (e) => {
   if (gameState !== 'playing' || e.button !== 0) return;
-  if (currentWeapon === 'gun') shoot();
-  else meleeAttack();
+  mouseHeld = true;
+  if (currentWeapon === 'knife') {
+    meleeAttack();
+    return;
+  }
+  tryFireGun();
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) mouseHeld = false;
 });
 
 let recoil = 0;
-const GUN_DAMAGE = 45;
 
 // spring-damper recoil: a shot adds angular velocity (an impulse), then a
 // spring pulls the view back to center while damping bleeds off the motion,
@@ -609,7 +748,14 @@ const RECOIL_KICK_VEL = 2.4; // angular velocity added per shot (rad/s)
 let recoilOffset = 0; // current angular offset from the spring's rest position
 let recoilVel = 0; // current angular velocity of the recoil spring
 
-function shoot() {
+function tryFireGun() {
+  if (gunFireTimer > 0) return;
+  const def = GUN_CATALOG[equippedGunId];
+  gunFireTimer = def.cooldown;
+  shoot(def);
+}
+
+function shoot(def) {
   flashLight.intensity = 3;
   recoil = 0.08;
   pulseCrosshair();
@@ -625,7 +771,7 @@ function shoot() {
     let hitMesh = hits[0].object;
     const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
     if (enemy) {
-      damageEnemy(enemy, GUN_DAMAGE);
+      damageEnemy(enemy, def.damage);
       showHitMarker();
     }
   }
@@ -847,6 +993,13 @@ function addMoney(amount) {
   goldPopupEl.classList.add('pop');
 }
 
+function spendMoney(amount) {
+  money -= amount;
+  saveMoney();
+  goldValEl.textContent = money;
+  menuGoldValEl.textContent = money;
+}
+
 function updateHUD() {
   const pct = Math.max(0, health);
   healthFill.style.width = pct + '%';
@@ -899,6 +1052,8 @@ function resetGame() {
   recoilVel = 0;
   knifeCooldown = 0;
   knifeSwing = 0;
+  gunFireTimer = 0;
+  mouseHeld = false;
   weaponIndex = 0;
   setWeapon('gun');
   needsWaveStart = true;
@@ -958,6 +1113,10 @@ function animate() {
     camera.rotateX(recoilOffset - prevRecoilOffset);
 
     // weapon cooldowns / swing animation
+    if (gunFireTimer > 0) gunFireTimer -= delta;
+    if (mouseHeld && currentWeapon === 'gun' && GUN_CATALOG[equippedGunId].auto) {
+      tryFireGun();
+    }
     if (knifeCooldown > 0) knifeCooldown -= delta;
     knifeSwing = Math.max(0, knifeSwing - delta * 3.2);
     const swingShape = Math.sin((1 - knifeSwing) * Math.PI); // 0 -> 1 -> 0 across the slash
@@ -1060,31 +1219,94 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// ---------- armory: shows owned weapons per slot (more slots unlock via the shop later) ----------
-const WEAPON_CATALOG = {
-  gun: [{ id: 'pistol', name: '권총 (Pistol)', stats: `데미지 ${GUN_DAMAGE} · 표준 연사` }],
-  knife: [{ id: 'knife', name: '나이프 (Knife)', stats: `데미지 ${KNIFE_DAMAGE} · 근접 전용, 이동속도 증가` }],
-};
+function gunStatsLabel(def) {
+  const fireType = def.auto ? '자동 연사' : '반자동';
+  return `데미지 ${def.damage} · ${fireType}`;
+}
+
+// ---------- armory: equip any owned gun; the knife slot is fixed for now ----------
 const armoryListEl = document.getElementById('armory-list');
 function renderArmory() {
   armoryListEl.innerHTML = '';
-  for (const slot of Object.values(WEAPON_CATALOG)) {
-    for (const item of slot) {
-      const row = document.createElement('div');
-      row.className = 'armory-item';
-      row.innerHTML = `
-        <div class="info">
-          <div class="name">${item.name}</div>
-          <div class="stats">${item.stats}</div>
-        </div>
-        <div class="equip-badge equipped">장착됨</div>
-      `;
-      armoryListEl.appendChild(row);
+
+  for (const gunId of ownedGuns) {
+    const def = GUN_CATALOG[gunId];
+    const row = document.createElement('div');
+    row.className = 'armory-item';
+    const isEquipped = gunId === equippedGunId;
+    row.innerHTML = `
+      <div class="info">
+        <div class="name">${def.name}</div>
+        <div class="stats">${gunStatsLabel(def)}</div>
+      </div>
+      <div class="equip-badge ${isEquipped ? 'equipped' : 'equip-action'}">${isEquipped ? '장착됨' : '장착'}</div>
+    `;
+    if (!isEquipped) {
+      row.querySelector('.equip-badge').addEventListener('click', () => {
+        equippedGunId = gunId;
+        saveEquippedGun();
+        applyEquippedGunModel();
+        setWeapon(currentWeapon);
+        renderArmory();
+      });
     }
+    armoryListEl.appendChild(row);
+  }
+
+  const knifeRow = document.createElement('div');
+  knifeRow.className = 'armory-item';
+  knifeRow.innerHTML = `
+    <div class="info">
+      <div class="name">나이프 (Knife)</div>
+      <div class="stats">데미지 ${KNIFE_DAMAGE} · 근접 전용, 이동속도 증가</div>
+    </div>
+    <div class="equip-badge equipped">장착됨</div>
+  `;
+  armoryListEl.appendChild(knifeRow);
+}
+
+// ---------- shop: spend gold to unlock more guns ----------
+const shopListEl = document.getElementById('shop-list');
+const shopGoldValEl = document.getElementById('shop-gold-val');
+function renderShop() {
+  shopGoldValEl.textContent = money;
+  shopListEl.innerHTML = '';
+
+  for (const def of Object.values(GUN_CATALOG)) {
+    const owned = ownedGuns.includes(def.id);
+    const row = document.createElement('div');
+    row.className = 'armory-item';
+
+    let badgeHtml;
+    if (owned) {
+      badgeHtml = `<div class="equip-badge equipped">보유중</div>`;
+    } else if (money >= def.price) {
+      badgeHtml = `<div class="equip-badge buy-action">${def.price} G</div>`;
+    } else {
+      badgeHtml = `<div class="equip-badge disabled">${def.price} G</div>`;
+    }
+
+    row.innerHTML = `
+      <div class="info">
+        <div class="name">${def.name}</div>
+        <div class="stats">${gunStatsLabel(def)}</div>
+      </div>
+      ${badgeHtml}
+    `;
+
+    if (!owned && money >= def.price) {
+      row.querySelector('.equip-badge').addEventListener('click', () => {
+        spendMoney(def.price);
+        ownedGuns.push(def.id);
+        saveOwnedGuns();
+        renderShop();
+      });
+    }
+    shopListEl.appendChild(row);
   }
 }
-renderArmory();
 
+applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();

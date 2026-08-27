@@ -324,7 +324,13 @@ h1, .weapon-dot, #wave, #score, #health-label {
 
 .menu-buttons {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
+}
+
+.menu-buttons button {
+  padding: 12px 22px;
 }
 
 button.secondary {
@@ -408,6 +414,24 @@ button.back-btn:hover {
 
 .armory-item .equip-badge.equip-action:hover {
   background: rgba(77, 216, 255, 0.22);
+}
+
+.armory-item .equip-badge.buy-action {
+  color: #1a1400;
+  background: var(--gold);
+  cursor: pointer;
+  border: 1px solid var(--gold);
+}
+
+.armory-item .equip-badge.buy-action:hover {
+  filter: brightness(1.1);
+}
+
+.armory-item .equip-badge.disabled {
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  cursor: not-allowed;
 }
 
 /* settings */
