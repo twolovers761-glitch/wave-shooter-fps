@@ -140,21 +140,112 @@ makeWall(ARENA_SIZE * 2, 1, 0, ARENA_SIZE);
 makeWall(1, ARENA_SIZE * 2, -ARENA_SIZE, 0);
 makeWall(1, ARENA_SIZE * 2, ARENA_SIZE, 0);
 
-// scattered cover boxes (also act as climbable obstacles)
-const coverMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.7 });
+// ---------- arena layout: cover, platforms, corner landmarks ----------
 const obstacles = [];
-for (let i = 0; i < 10; i++) {
+const footprints = []; // {x, z, r} of everything placed so far, for spacing checks
+
+function overlapsPlaced(x, z, r, margin) {
+  return footprints.some((p) => {
+    const dx = x - p.x;
+    const dz = z - p.z;
+    return Math.hypot(dx, dz) < r + p.r + margin;
+  });
+}
+
+// pick a random spot that stays clear of the center spawn and other props
+function pickSpot(radius, minSpawnDist, maxTries = 30) {
+  for (let t = 0; t < maxTries; t++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 8 + Math.random() * 16;
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    if (Math.hypot(x, z) < minSpawnDist) continue;
+    if (overlapsPlaced(x, z, radius, 1.4)) continue;
+    footprints.push({ x, z, r: radius });
+    return { x, z };
+  }
+  return null;
+}
+
+// four raised combat platforms, one per quadrant, for real high-ground fights
+const platformMat = new THREE.MeshStandardMaterial({ color: 0x384252, roughness: 0.75 });
+const PLATFORM_SIZE = 3.6;
+const PLATFORM_HEIGHT = 1.5;
+const platformSpots = [
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+for (const [sx, sz] of platformSpots) {
+  const x = sx * 11;
+  const z = sz * 11;
+  footprints.push({ x, z, r: PLATFORM_SIZE * 0.75 });
+
+  const plat = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE, PLATFORM_HEIGHT, PLATFORM_SIZE), platformMat);
+  plat.position.set(x, PLATFORM_HEIGHT / 2, z);
+  plat.castShadow = true;
+  plat.receiveShadow = true;
+  scene.add(plat);
+
+  const platTrim = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE * 0.97, 0.05, PLATFORM_SIZE * 0.97), trimMat);
+  platTrim.position.set(x, PLATFORM_HEIGHT + 0.03, z);
+  scene.add(platTrim);
+
+  obstacles.push({ x, z, hx: PLATFORM_SIZE / 2, hz: PLATFORM_SIZE / 2, height: PLATFORM_HEIGHT });
+}
+
+// small cover: a mix of crates and barrels, scattered but never overlapping
+const coverMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.7 });
+const barrelMat = new THREE.MeshStandardMaterial({ color: 0x5c4a34, roughness: 0.7, metalness: 0.1 });
+for (let i = 0; i < 12; i++) {
+  const isBarrel = Math.random() < 0.35;
   const s = 1.0 + Math.random() * 0.6;
-  const box = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), coverMat);
-  const angle = Math.random() * Math.PI * 2;
-  const r = 8 + Math.random() * 16;
-  const x = Math.cos(angle) * r;
-  const z = Math.sin(angle) * r;
-  box.position.set(x, s / 2, z);
-  box.castShadow = true;
-  box.receiveShadow = true;
-  scene.add(box);
-  obstacles.push({ x, z, hx: s / 2, hz: s / 2, height: s });
+  const spot = pickSpot(s * 0.7, 5);
+  if (!spot) continue;
+
+  let mesh;
+  if (isBarrel) {
+    mesh = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.35, s * 0.38, s * 0.9, 10), barrelMat);
+    mesh.position.set(spot.x, (s * 0.9) / 2, spot.z);
+  } else {
+    mesh = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), coverMat);
+    mesh.position.set(spot.x, s / 2, spot.z);
+  }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  const height = isBarrel ? s * 0.9 : s;
+  obstacles.push({ x: spot.x, z: spot.z, hx: s / 2, hz: s / 2, height });
+}
+
+// glowing corner pillars as landmarks so the arena doesn't feel featureless
+const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2b3242, roughness: 0.6 });
+const cornerSigns = [
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+for (const [sx, sz] of cornerSigns) {
+  const x = sx * (ARENA_SIZE - 2);
+  const z = sz * (ARENA_SIZE - 2);
+
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 5, 8), pillarMat);
+  pillar.position.set(x, 2.5, z);
+  pillar.castShadow = true;
+  scene.add(pillar);
+
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), trimMat);
+  cap.position.set(x, 5.05, z);
+  scene.add(cap);
+
+  const cornerLight = new THREE.PointLight(0x4dd8ff, 1.1, 14);
+  cornerLight.position.set(x, 4.6, z);
+  scene.add(cornerLight);
+
+  obstacles.push({ x, z, hx: 0.4, hz: 0.4, height: 5 });
 }
 
 // ---------- ambient dust ----------
@@ -199,10 +290,10 @@ scene.add(dust);
 // positioned relative to each other instead of the camera.
 const gunGroup = new THREE.Group();
 const gunModel = new THREE.Group();
-gunModel.position.set(0.25, -0.22, -0.42);
+gunModel.position.set(0.26, -0.2, -0.34);
 gunGroup.add(gunModel);
 
-const gunMat = new THREE.MeshStandardMaterial({ color: 0x22282f, roughness: 0.45, metalness: 0.65 });
+const gunMat = new THREE.MeshStandardMaterial({ color: 0x22282f, roughness: 0.4, metalness: 0.7 });
 const gunAccentMat = new THREE.MeshStandardMaterial({
   color: 0x4dd8ff,
   emissive: 0x1a5670,
@@ -210,31 +301,44 @@ const gunAccentMat = new THREE.MeshStandardMaterial({
   roughness: 0.4,
 });
 
-const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.095, 0.3), gunMat);
-receiver.position.set(0, 0, -0.05);
-gunModel.add(receiver);
+// lower frame (the part the grip and trigger guard hang off of)
+const frame = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.075, 0.15), gunMat);
+frame.position.set(0, -0.015, -0.03);
+gunModel.add(frame);
 
-const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), gunMat);
-barrel.rotation.x = Math.PI / 2;
-barrel.position.set(0, 0.015, -0.36);
-gunModel.add(barrel);
+// slide sits on top of the frame and overhangs the front for the classic
+// stepped pistol silhouette
+const slide = new THREE.Mesh(new THREE.BoxGeometry(0.066, 0.05, 0.22), gunMat);
+slide.position.set(0, 0.045, -0.06);
+gunModel.add(slide);
 
-const grip = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.17, 0.065), gunMat);
-grip.position.set(0, -0.13, 0.08);
-grip.rotation.x = 0.25;
+// short barrel stub poking out past the front of the slide
+const barrelTip = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.045, 8), gunMat);
+barrelTip.rotation.x = Math.PI / 2;
+barrelTip.position.set(0, 0.045, -0.185);
+gunModel.add(barrelTip);
+
+// grip: rakes backward under the hand, the defining pistol silhouette cue
+const grip = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.15, 0.075), gunMat);
+grip.position.set(0, -0.12, 0.05);
+grip.rotation.x = -0.22;
 gunModel.add(grip);
 
-const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13, 0.06), gunMat);
-magazine.position.set(0, -0.14, -0.05);
-magazine.rotation.x = -0.15;
-gunModel.add(magazine);
+const magBase = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.06), gunMat);
+magBase.position.set(0, -0.205, 0.06);
+magBase.rotation.x = -0.22;
+gunModel.add(magBase);
 
-const sight = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.032, 0.09), gunMat);
-sight.position.set(0, 0.075, -0.05);
-gunModel.add(sight);
+const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.016), gunMat);
+rearSight.position.set(0, 0.076, 0.02);
+gunModel.add(rearSight);
 
-const gunAccent = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.26), gunAccentMat);
-gunAccent.position.set(0.052, -0.005, -0.05);
+const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.012), gunMat);
+frontSight.position.set(0, 0.076, -0.165);
+gunModel.add(frontSight);
+
+const gunAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.19), gunAccentMat);
+gunAccent.position.set(0.037, 0.045, -0.06);
 gunModel.add(gunAccent);
 
 camera.add(gunGroup);
@@ -282,7 +386,7 @@ scene.add(camera);
 
 // muzzle flash: a point light plus a soft glow sprite at the barrel tip
 const flashLight = new THREE.PointLight(0xffcc66, 0, 4);
-flashLight.position.set(0.25, -0.2, -0.95);
+flashLight.position.set(0.26, -0.155, -0.55);
 camera.add(flashLight);
 
 function makeGlowTexture() {
@@ -304,7 +408,7 @@ const muzzleSprite = new THREE.Sprite(
   new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, opacity: 0 })
 );
 muzzleSprite.scale.set(0, 0, 0);
-muzzleSprite.position.set(0.25, -0.19, -0.98);
+muzzleSprite.position.set(0.26, -0.15, -0.57);
 camera.add(muzzleSprite);
 
 // ---------- controls ----------
