@@ -438,6 +438,130 @@ const sgAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.3), shotgu
 sgAccent.position.set(0.032, 0.025, -0.15);
 shotgunModel.add(sgAccent);
 
+// ---------- burst rifle view model (fourth purchasable gun) ----------
+const burstModel = new THREE.Group();
+burstModel.position.set(0.25, -0.18, -0.26);
+burstModel.visible = false;
+gunGroup.add(burstModel);
+
+const burstAccentMat = new THREE.MeshStandardMaterial({
+  color: 0x4dff9d,
+  emissive: 0x158a4f,
+  emissiveIntensity: 1,
+  roughness: 0.4,
+});
+
+const brReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.065, 0.28), gunMat);
+brReceiver.position.set(0, 0, -0.04);
+burstModel.add(brReceiver);
+
+const brBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8), gunMat);
+brBarrel.rotation.x = Math.PI / 2;
+brBarrel.position.set(0, 0.01, -0.32);
+burstModel.add(brBarrel);
+
+const brHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.04, 0.14), gunMat);
+brHandguard.position.set(0, -0.008, -0.22);
+burstModel.add(brHandguard);
+
+const brStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.16), gunMat);
+brStock.position.set(0, -0.005, 0.13);
+burstModel.add(brStock);
+
+const brGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
+brGrip.position.set(0, -0.08, -0.02);
+brGrip.rotation.x = -0.15;
+burstModel.add(brGrip);
+
+const brMag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
+brMag.position.set(0, -0.09, -0.09);
+brMag.rotation.x = 0.2;
+burstModel.add(brMag);
+
+const brDial = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), burstAccentMat);
+brDial.position.set(0.033, 0.02, 0);
+burstModel.add(brDial);
+
+const brAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.34), burstAccentMat);
+brAccent.position.set(0.032, 0, -0.15);
+burstModel.add(brAccent);
+
+// ---------- sniper rifle view model (fifth purchasable gun) ----------
+const sniperModel = new THREE.Group();
+sniperModel.position.set(0.25, -0.16, -0.2);
+sniperModel.visible = false;
+gunGroup.add(sniperModel);
+
+const sniperAccentMat = new THREE.MeshStandardMaterial({
+  color: 0xffd23d,
+  emissive: 0x8a6a10,
+  emissiveIntensity: 1,
+  roughness: 0.4,
+});
+const scopeGlassMat = new THREE.MeshStandardMaterial({
+  color: 0x1a2e3d,
+  emissive: 0x2d5a7a,
+  emissiveIntensity: 0.8,
+  roughness: 0.2,
+  metalness: 0.6,
+});
+
+const snReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.06, 0.3), gunMat);
+snReceiver.position.set(0, 0, -0.05);
+sniperModel.add(snReceiver);
+
+const snBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.55, 8), gunMat);
+snBarrel.rotation.x = Math.PI / 2;
+snBarrel.position.set(0, 0.005, -0.55);
+sniperModel.add(snBarrel);
+
+const snScopeRiser = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.015, 0.06), gunMat);
+snScopeRiser.position.set(0, 0.045, -0.1);
+sniperModel.add(snScopeRiser);
+
+const snScopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 10), gunMat);
+snScopeTube.rotation.x = Math.PI / 2;
+snScopeTube.position.set(0, 0.075, -0.1);
+sniperModel.add(snScopeTube);
+
+const snScopeLensFront = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 10), scopeGlassMat);
+snScopeLensFront.rotation.x = Math.PI / 2;
+snScopeLensFront.position.set(0, 0.075, -0.19);
+sniperModel.add(snScopeLensFront);
+
+const snScopeLensRear = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.02, 10), scopeGlassMat);
+snScopeLensRear.rotation.x = Math.PI / 2;
+snScopeLensRear.position.set(0, 0.075, -0.01);
+sniperModel.add(snScopeLensRear);
+
+const snStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.28), gunMat);
+snStock.position.set(0, -0.005, 0.19);
+sniperModel.add(snStock);
+
+const snGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
+snGrip.position.set(0, -0.075, -0.05);
+snGrip.rotation.x = -0.15;
+sniperModel.add(snGrip);
+
+const snMag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.13, 0.05), gunMat);
+snMag.position.set(0, -0.11, -0.12);
+snMag.rotation.x = 0.2;
+sniperModel.add(snMag);
+
+const bipodGeo = new THREE.BoxGeometry(0.012, 0.14, 0.012);
+const snBipodL = new THREE.Mesh(bipodGeo, gunMat);
+snBipodL.position.set(-0.04, -0.06, -0.45);
+snBipodL.rotation.z = 0.35;
+sniperModel.add(snBipodL);
+const snBipodR = new THREE.Mesh(bipodGeo, gunMat);
+snBipodR.position.set(0.04, -0.06, -0.45);
+snBipodR.rotation.z = -0.35;
+sniperModel.add(snBipodR);
+
+const snAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.28), sniperAccentMat);
+snAccent.position.set(0.03, 0, -0.05);
+sniperModel.add(snAccent);
+
 camera.add(gunGroup);
 
 // ---------- knife view model ----------
@@ -579,15 +703,24 @@ const sensVal = document.getElementById('sens-val');
 const fovSlider = document.getElementById('fov-slider');
 const fovVal = document.getElementById('fov-val');
 
+// the "resting" (non-scoped) sensitivity/FOV the sliders control; while
+// aiming down a scope the animate loop lerps away from these and back
+let baseSens = parseFloat(sensSlider.value);
+let baseFov = parseFloat(fovSlider.value);
+
 sensSlider.addEventListener('input', () => {
   const v = parseFloat(sensSlider.value);
-  controls.pointerSpeed = v;
+  baseSens = v;
+  if (!isAiming) controls.pointerSpeed = v;
   sensVal.textContent = v.toFixed(2);
 });
 fovSlider.addEventListener('input', () => {
   const v = parseFloat(fovSlider.value);
-  camera.fov = v;
-  camera.updateProjectionMatrix();
+  baseFov = v;
+  if (!isAiming) {
+    camera.fov = v;
+    camera.updateProjectionMatrix();
+  }
   fovVal.textContent = v;
 });
 
@@ -668,8 +801,35 @@ const GUN_CATALOG = {
     cooldown: 0.75,
     muzzle: { x: 0.26, y: -0.155, z: -0.72 },
   },
+  burst: {
+    id: 'burst',
+    name: '점사 소총 (Burst Rifle)',
+    price: 300,
+    damage: 24,
+    burstCount: 3,
+    burstDelay: 70, // ms between rounds within one burst
+    auto: false,
+    cooldown: 0.55, // cooldown starts once the whole burst is triggered
+    muzzle: { x: 0.25, y: -0.17, z: -0.71 },
+  },
+  sniper: {
+    id: 'sniper',
+    name: '저격총 (Sniper Rifle)',
+    price: 480,
+    damage: 100,
+    auto: false,
+    cooldown: 1.15,
+    zoomFov: 25, // FOV while aiming down the scope (right-click)
+    muzzle: { x: 0.25, y: -0.155, z: -1.03 },
+  },
 };
-const gunModelsById = { pistol: gunModel, rifle: rifleModel, shotgun: shotgunModel };
+const gunModelsById = {
+  pistol: gunModel,
+  rifle: rifleModel,
+  shotgun: shotgunModel,
+  burst: burstModel,
+  sniper: sniperModel,
+};
 
 const OWNED_GUNS_KEY = 'waveShooterOwnedGuns';
 const EQUIPPED_GUN_KEY = 'waveShooterEquippedGun';
@@ -742,6 +902,14 @@ function setWeapon(name) {
   knifeGroup.visible = name === 'knife';
   weaponLabelEl.textContent = name === 'gun' ? GUN_CATALOG[equippedGunId].id.toUpperCase() : 'KNIFE';
   crosshairEl.classList.toggle('knife', name === 'knife');
+
+  // cancel scoping if the newly selected weapon/gun can't zoom
+  const def = name === 'gun' ? GUN_CATALOG[equippedGunId] : null;
+  if (isAiming && !(def && def.zoomFov)) {
+    isAiming = false;
+    scopeOverlayEl.classList.remove('active');
+    crosshairEl.classList.remove('hidden');
+  }
 }
 
 let hitMarkerTimeout = null;
@@ -789,8 +957,8 @@ window.addEventListener(
 );
 
 // number-key quick equip: 1/2/3 -> pistol/rifle/shotgun, only among owned guns
-const GUN_HOTKEY_ORDER = ['pistol', 'rifle', 'shotgun'];
-const GUN_HOTKEY_CODES = ['Digit1', 'Digit2', 'Digit3'];
+const GUN_HOTKEY_ORDER = ['pistol', 'rifle', 'shotgun', 'burst', 'sniper'];
+const GUN_HOTKEY_CODES = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
 window.addEventListener('keydown', (e) => {
   if (gameState !== 'playing' || !numberKeySwitchEnabled) return;
   const idx = GUN_HOTKEY_CODES.indexOf(e.code);
@@ -851,8 +1019,27 @@ const center = new THREE.Vector2(0, 0);
 let mouseHeld = false;
 let gunFireTimer = 0;
 
+// right-click aims down the scope on guns that have a zoomFov (currently
+// just the sniper) - zooms the camera in and steadies the mouse
+let isAiming = false;
+const scopeOverlayEl = document.getElementById('scope-overlay');
+
+window.addEventListener('contextmenu', (e) => {
+  if (gameState === 'playing') e.preventDefault();
+});
+
 window.addEventListener('mousedown', (e) => {
-  if (gameState !== 'playing' || e.button !== 0) return;
+  if (gameState !== 'playing') return;
+  if (e.button === 2) {
+    const def = currentWeapon === 'gun' ? GUN_CATALOG[equippedGunId] : null;
+    if (def && def.zoomFov) {
+      isAiming = true;
+      scopeOverlayEl.classList.add('active');
+      crosshairEl.classList.add('hidden');
+    }
+    return;
+  }
+  if (e.button !== 0) return;
   mouseHeld = true;
   if (currentWeapon === 'knife') {
     meleeAttack();
@@ -862,6 +1049,11 @@ window.addEventListener('mousedown', (e) => {
 });
 window.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseHeld = false;
+  if (e.button === 2) {
+    isAiming = false;
+    scopeOverlayEl.classList.remove('active');
+    crosshairEl.classList.remove('hidden');
+  }
 });
 
 let recoil = 0;
@@ -879,7 +1071,16 @@ function tryFireGun() {
   if (gunFireTimer > 0) return;
   const def = GUN_CATALOG[equippedGunId];
   gunFireTimer = def.cooldown;
-  shoot(def);
+
+  if (def.burstCount) {
+    for (let i = 0; i < def.burstCount; i++) {
+      setTimeout(() => {
+        if (gameState === 'playing') shoot(def);
+      }, i * (def.burstDelay || 70));
+    }
+  } else {
+    shoot(def);
+  }
 }
 
 function shoot(def) {
@@ -1199,6 +1400,10 @@ function resetGame() {
   knifeSwing = 0;
   gunFireTimer = 0;
   mouseHeld = false;
+  isAiming = false;
+  scopeOverlayEl.classList.remove('active');
+  camera.fov = baseFov;
+  camera.updateProjectionMatrix();
   weaponIndex = 0;
   setWeapon('gun');
   needsWaveStart = true;
@@ -1256,6 +1461,15 @@ function animate() {
     const prevRecoilOffset = recoilOffset;
     recoilOffset += recoilVel * delta;
     camera.rotateX(recoilOffset - prevRecoilOffset);
+
+    // scope zoom: lerp FOV/sensitivity toward the aimed values while
+    // holding right-click on a gun that has one, otherwise back to normal
+    const equippedDef = currentWeapon === 'gun' ? GUN_CATALOG[equippedGunId] : null;
+    const aimingNow = isAiming && equippedDef && equippedDef.zoomFov;
+    const targetFov = aimingNow ? equippedDef.zoomFov : baseFov;
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, delta * 12);
+    camera.updateProjectionMatrix();
+    controls.pointerSpeed = aimingNow ? baseSens * 0.35 : baseSens;
 
     // weapon cooldowns / swing animation
     if (gunFireTimer > 0) gunFireTimer -= delta;
