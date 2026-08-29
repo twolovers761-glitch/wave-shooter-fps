@@ -220,6 +220,10 @@ function sfxPlayerHurt() {
 function sfxJump() {
   playTone({ freq: 300, freqEnd: 520, duration: 0.1, type: 'sine', volume: 0.15 });
 }
+function sfxSpit() {
+  playTone({ freq: 500, freqEnd: 900, duration: 0.08, type: 'sine', volume: 0.18 });
+  playNoise({ duration: 0.05, volume: 0.12, filterFreq: 3000 });
+}
 function sfxWaveStart() {
   playThump({ freq: 50, freqEnd: 24, duration: 0.5, hold: 0.05, volume: 0.5, echo: 0.4 });
   playTone({ freq: 440, duration: 0.14, type: 'triangle', volume: 0.25, echo: 0.15 });
@@ -1547,15 +1551,78 @@ const enemies = [];
 const ENEMY_BASE_HP = 100;
 const ENEMY_HP_PER_WAVE = 8;
 
-function buildEnemyMesh() {
+// four enemy kinds, each a stat/color/scale variation on the same rig, plus
+// a ranged "spitter" that fights from a distance instead of melee
+const ENEMY_TYPES = {
+  grunt: {
+    name: '그런트',
+    hpMult: 1,
+    speedMult: 1,
+    meleeDamage: 10,
+    scale: 1,
+    color: 0x9c2b2b,
+    headColor: 0x7a1f1f,
+    eyeColor: 0xffb347,
+    emissive: 0x2a0000,
+  },
+  runner: {
+    name: '러너',
+    hpMult: 0.45,
+    speedMult: 1.8,
+    meleeDamage: 7,
+    scale: 0.75,
+    color: 0xb8b32a,
+    headColor: 0x8f8a20,
+    eyeColor: 0xfff066,
+    emissive: 0x2a2a00,
+  },
+  brute: {
+    name: '브루트',
+    hpMult: 2.8,
+    speedMult: 0.55,
+    meleeDamage: 22,
+    scale: 1.5,
+    color: 0x454b58,
+    headColor: 0x33373f,
+    eyeColor: 0xff4d4d,
+    emissive: 0x0a0d12,
+  },
+  spitter: {
+    name: '스피터',
+    hpMult: 0.7,
+    speedMult: 0.9,
+    meleeDamage: 6,
+    scale: 0.95,
+    color: 0x6a2a8f,
+    headColor: 0x4d1f6b,
+    eyeColor: 0xd77bff,
+    emissive: 0x1a0a26,
+    ranged: true,
+    attackRange: 13,
+    projDamage: 12,
+    projSpeed: 16,
+    fireCooldown: 2.4,
+  },
+};
+
+// weighted pool: grunts are always common; tougher/rarer kinds unlock and
+// mix in on later waves so difficulty ramps in variety, not just numbers
+function pickEnemyKind(currentWave) {
+  const pool = ['grunt', 'grunt'];
+  if (currentWave >= 2) pool.push('runner', 'runner');
+  if (currentWave >= 3) pool.push('brute');
+  if (currentWave >= 4) pool.push('spitter');
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function buildEnemyMesh(kindDef) {
   const group = new THREE.Group();
 
-  const skinColor = 0x9c2b2b;
-  const bodyMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.55, emissive: 0x2a0000 });
-  const headMat = new THREE.MeshStandardMaterial({ color: 0x7a1f1f, roughness: 0.5, emissive: 0x2a0000 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: kindDef.color, roughness: 0.55, emissive: kindDef.emissive });
+  const headMat = new THREE.MeshStandardMaterial({ color: kindDef.headColor, roughness: 0.5, emissive: kindDef.emissive });
   const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0xffb347,
-    emissive: 0xff7a1a,
+    color: kindDef.eyeColor,
+    emissive: kindDef.eyeColor,
     emissiveIntensity: 2.2,
     roughness: 0.3,
   });
@@ -1571,10 +1638,24 @@ function buildEnemyMesh() {
   head.userData.isHead = true;
   group.add(head);
 
-  const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), bodyMat);
-  horn.position.y = 1.82;
-  horn.userData.isHead = true;
-  group.add(horn);
+  if (kindDef.ranged) {
+    // a glowing energy core instead of a horn, marking it as the caster type
+    const orbMat = new THREE.MeshStandardMaterial({
+      color: kindDef.eyeColor,
+      emissive: kindDef.eyeColor,
+      emissiveIntensity: 2.8,
+      roughness: 0.2,
+    });
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), orbMat);
+    orb.position.y = 1.85;
+    orb.userData.isHead = true;
+    group.add(orb);
+  } else {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), bodyMat);
+    horn.position.y = 1.82;
+    horn.userData.isHead = true;
+    group.add(horn);
+  }
 
   const eyeGeo = new THREE.SphereGeometry(0.055, 6, 6);
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
@@ -1585,25 +1666,30 @@ function buildEnemyMesh() {
   eyeR.userData.isHead = true;
   group.add(eyeL, eyeR);
 
+  group.scale.setScalar(kindDef.scale);
   group.userData.flashMats = [bodyMat, headMat];
   return group;
 }
 
 function spawnEnemy(speedMult) {
-  const mesh = buildEnemyMesh();
+  const kind = pickEnemyKind(wave);
+  const kindDef = ENEMY_TYPES[kind];
+  const mesh = buildEnemyMesh(kindDef);
 
   const angle = Math.random() * Math.PI * 2;
   const r = 16 + Math.random() * 8;
   mesh.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
   scene.add(mesh);
 
-  const hp = ENEMY_BASE_HP + (wave - 1) * ENEMY_HP_PER_WAVE;
+  const hp = Math.round((ENEMY_BASE_HP + (wave - 1) * ENEMY_HP_PER_WAVE) * kindDef.hpMult);
 
   enemies.push({
     mesh,
+    kind,
     hp,
     maxHp: hp,
-    speed: (1.4 + Math.random() * 0.6) * speedMult,
+    speed: (1.4 + Math.random() * 0.6) * speedMult * kindDef.speedMult,
+    radius: ENEMY_RADIUS * kindDef.scale,
     attackCooldown: 0,
     y: 0,
     velY: 0,
@@ -1614,9 +1700,9 @@ function spawnEnemy(speedMult) {
 // ---------- particles (enemy death bursts) ----------
 const particles = [];
 const particleGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
-function spawnDeathBurst(position) {
+function spawnDeathBurst(position, color = 0x9c2b2b) {
   for (let i = 0; i < 7; i++) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x9c2b2b, roughness: 0.6 });
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
     const mesh = new THREE.Mesh(particleGeo, mat);
     mesh.position.copy(position);
     mesh.position.y += 0.9;
@@ -1640,6 +1726,38 @@ function clearParticles() {
   particles.length = 0;
 }
 
+// ---------- enemy projectiles (the ranged "spitter" type) ----------
+const projectiles = [];
+function spawnEnemyProjectile(fromPos, kindDef) {
+  sfxSpit();
+  const mat = new THREE.MeshStandardMaterial({
+    color: kindDef.eyeColor,
+    emissive: kindDef.eyeColor,
+    emissiveIntensity: 2.5,
+    roughness: 0.2,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), mat);
+  mesh.position.copy(fromPos);
+  mesh.position.y += 1.5;
+  scene.add(mesh);
+
+  const dir = new THREE.Vector3().subVectors(camera.position, mesh.position).normalize();
+  projectiles.push({
+    mesh,
+    vel: dir.multiplyScalar(kindDef.projSpeed || 16),
+    damage: kindDef.projDamage || 10,
+    life: 3,
+  });
+}
+
+function clearProjectiles() {
+  for (const p of projectiles) {
+    scene.remove(p.mesh);
+    p.mesh.material.dispose();
+  }
+  projectiles.length = 0;
+}
+
 function damageEnemy(enemy, amount) {
   enemy.hp -= amount;
   const flashMats = enemy.mesh.userData.flashMats;
@@ -1648,7 +1766,7 @@ function damageEnemy(enemy, amount) {
 
   if (enemy.hp <= 0) {
     sfxEnemyDeath();
-    spawnDeathBurst(enemy.mesh.position);
+    spawnDeathBurst(enemy.mesh.position, ENEMY_TYPES[enemy.kind].color);
     scene.remove(enemy.mesh);
     const idx = enemies.indexOf(enemy);
     if (idx !== -1) enemies.splice(idx, 1);
@@ -1792,6 +1910,7 @@ function resetGame() {
   enemies.forEach((en) => scene.remove(en.mesh));
   enemies.length = 0;
   clearParticles();
+  clearProjectiles();
   health = 100;
   score = 0;
   wave = 1;
@@ -1934,6 +2053,7 @@ function animate() {
 
     // enemies
     for (const enemy of enemies) {
+      const kindDef = ENEMY_TYPES[enemy.kind];
       const dir = new THREE.Vector3(
         camera.position.x - enemy.mesh.position.x,
         0,
@@ -1944,27 +2064,34 @@ function animate() {
 
       enemy.mesh.rotation.y = Math.atan2(dir.x, dir.z);
 
-      // "close enough to attack" has to check height too - otherwise an
+      // "close enough to engage" has to check height too - otherwise an
       // enemy standing right under a platform the player is on reads as
-      // being in melee range and just stands there instead of climbing up
+      // being in range and just stands there instead of climbing up
       const heightGap = Math.abs(camera.position.y - (enemy.y + 1.5));
-      const inMeleeRange = horizDist <= 1.6 && heightGap <= 1.8;
+      const engageRange = kindDef.ranged ? kindDef.attackRange : 1.6;
+      const heightTolerance = kindDef.ranged ? 6 : 1.8;
+      const inEngageRange = horizDist <= engageRange && heightGap <= heightTolerance;
 
       let blocked = false;
-      if (!inMeleeRange) {
+      if (!inEngageRange) {
         const tentative = new THREE.Vector3(
           enemy.mesh.position.x + dir.x * enemy.speed * delta,
           0,
           enemy.mesh.position.z + dir.z * enemy.speed * delta
         );
-        blocked = resolveObstacleCollision(tentative, enemy.y, ENEMY_RADIUS);
+        blocked = resolveObstacleCollision(tentative, enemy.y, enemy.radius);
         enemy.mesh.position.x = tentative.x;
         enemy.mesh.position.z = tentative.z;
       } else {
         enemy.attackCooldown -= delta;
         if (enemy.attackCooldown <= 0) {
-          takeDamage(10);
-          enemy.attackCooldown = 0.8;
+          if (kindDef.ranged) {
+            spawnEnemyProjectile(enemy.mesh.position, kindDef);
+            enemy.attackCooldown = kindDef.fireCooldown;
+          } else {
+            takeDamage(kindDef.meleeDamage);
+            enemy.attackCooldown = 0.8;
+          }
         }
       }
 
@@ -1985,6 +2112,25 @@ function animate() {
         enemy.grounded = false;
       }
       enemy.mesh.position.y = enemy.y;
+    }
+
+    // enemy projectiles
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const p = projectiles[i];
+      p.life -= delta;
+      p.mesh.position.addScaledVector(p.vel, delta);
+      if (p.mesh.position.distanceTo(camera.position) < 0.6) {
+        takeDamage(p.damage);
+        scene.remove(p.mesh);
+        p.mesh.material.dispose();
+        projectiles.splice(i, 1);
+        continue;
+      }
+      if (p.life <= 0) {
+        scene.remove(p.mesh);
+        p.mesh.material.dispose();
+        projectiles.splice(i, 1);
+      }
     }
 
     // death-burst particles
