@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // ---------- audio ----------
 // every sound is synthesized with the Web Audio API (oscillators + filtered
@@ -640,308 +643,77 @@ let selectedLevelKey = loadSelectedLevel();
 buildLevel(selectedLevelKey);
 
 // ---------- gun view model ----------
-// gunGroup stays at the origin and is what the per-frame bob/recoil code
-// nudges; gunModel carries the fixed "resting" offset so parts can be
-// positioned relative to each other instead of the camera.
+// gunGroup stays at the origin and is what the per-frame bob/recoil/reload
+// code nudges; each gun gets its own "anchor" group with a fixed resting
+// offset that exists immediately, so the rest of the game can wire up
+// visibility/animation before its GLB model has actually finished loading.
+const gltfLoader = new GLTFLoader();
+const gltfCache = {};
+function loadModelInto(container, url, { scale = 1, position = [0, 0, 0], rotation = [0, 0, 0] } = {}) {
+  const place = (scene) => {
+    scene.scale.setScalar(scale);
+    scene.position.set(...position);
+    scene.rotation.set(...rotation);
+    scene.traverse((child) => {
+      if (child.isMesh) child.castShadow = true;
+    });
+    container.add(scene);
+  };
+  if (gltfCache[url]) {
+    place(gltfCache[url].clone(true));
+    return;
+  }
+  gltfLoader.load(
+    url,
+    (gltf) => {
+      gltfCache[url] = gltf.scene;
+      place(gltf.scene.clone(true));
+    },
+    undefined,
+    (err) => console.error('failed to load model', url, err)
+  );
+}
+
+const GUN_MODEL_SCALE = 0.35;
+
 const gunGroup = new THREE.Group();
+
 const gunModel = new THREE.Group();
-gunModel.position.set(0.26, -0.2, -0.34);
+gunModel.position.set(0.28, -0.24, -0.4);
 gunGroup.add(gunModel);
+loadModelInto(gunModel, 'assets/guns/blaster-a.glb', { scale: GUN_MODEL_SCALE });
 
-const gunMat = new THREE.MeshStandardMaterial({ color: 0x22282f, roughness: 0.4, metalness: 0.7 });
-const gunAccentMat = new THREE.MeshStandardMaterial({
-  color: 0x4dd8ff,
-  emissive: 0x1a5670,
-  emissiveIntensity: 1,
-  roughness: 0.4,
-});
-
-// lower frame (the part the grip and trigger guard hang off of)
-const frame = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.075, 0.15), gunMat);
-frame.position.set(0, -0.015, -0.03);
-gunModel.add(frame);
-
-// slide sits on top of the frame and overhangs the front for the classic
-// stepped pistol silhouette
-const slide = new THREE.Mesh(new THREE.BoxGeometry(0.066, 0.05, 0.22), gunMat);
-slide.position.set(0, 0.045, -0.06);
-gunModel.add(slide);
-
-// short barrel stub poking out past the front of the slide
-const barrelTip = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.045, 8), gunMat);
-barrelTip.rotation.x = Math.PI / 2;
-barrelTip.position.set(0, 0.045, -0.185);
-gunModel.add(barrelTip);
-
-// grip: rakes backward under the hand, the defining pistol silhouette cue
-const grip = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.15, 0.075), gunMat);
-grip.position.set(0, -0.12, 0.05);
-grip.rotation.x = -0.22;
-gunModel.add(grip);
-
-const magBase = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.06), gunMat);
-magBase.position.set(0, -0.205, 0.06);
-magBase.rotation.x = -0.22;
-gunModel.add(magBase);
-
-const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.016), gunMat);
-rearSight.position.set(0, 0.076, 0.02);
-gunModel.add(rearSight);
-
-const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.012), gunMat);
-frontSight.position.set(0, 0.076, -0.165);
-gunModel.add(frontSight);
-
-const gunAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.19), gunAccentMat);
-gunAccent.position.set(0.037, 0.045, -0.06);
-gunModel.add(gunAccent);
-
-// ---------- assault rifle view model (second purchasable gun) ----------
 const rifleModel = new THREE.Group();
-rifleModel.position.set(0.25, -0.17, -0.22);
+rifleModel.position.set(0.27, -0.24, -0.36);
 rifleModel.visible = false;
 gunGroup.add(rifleModel);
+loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE });
 
-const rifleAccentMat = new THREE.MeshStandardMaterial({
-  color: 0xff9d4d,
-  emissive: 0x7a3d10,
-  emissiveIntensity: 1,
-  roughness: 0.4,
-});
-
-const rifleReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.065, 0.34), gunMat);
-rifleReceiver.position.set(0, 0, -0.05);
-rifleModel.add(rifleReceiver);
-
-const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.4, 8), gunMat);
-rifleBarrel.rotation.x = Math.PI / 2;
-rifleBarrel.position.set(0, 0.008, -0.42);
-rifleModel.add(rifleBarrel);
-
-const rifleHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.18), gunMat);
-rifleHandguard.position.set(0, -0.008, -0.28);
-rifleModel.add(rifleHandguard);
-
-const rifleStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.2), gunMat);
-rifleStock.position.set(0, -0.005, 0.17);
-rifleModel.add(rifleStock);
-
-const rifleGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.11, 0.05), gunMat);
-rifleGrip.position.set(0, -0.085, -0.02);
-rifleGrip.rotation.x = -0.15;
-rifleModel.add(rifleGrip);
-
-const rifleMag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.05), gunMat);
-rifleMag.position.set(0, -0.1, -0.1);
-rifleMag.rotation.x = 0.25;
-rifleModel.add(rifleMag);
-
-const rifleFrontSight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.035, 0.01), gunMat);
-rifleFrontSight.position.set(0, 0.035, -0.4);
-rifleModel.add(rifleFrontSight);
-
-const rifleRearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.02), gunMat);
-rifleRearSight.position.set(0, 0.05, 0.06);
-rifleModel.add(rifleRearSight);
-
-const rifleAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.4), rifleAccentMat);
-rifleAccent.position.set(0.033, 0, -0.15);
-rifleModel.add(rifleAccent);
-
-// ---------- shotgun view model (third purchasable gun) ----------
 const shotgunModel = new THREE.Group();
-shotgunModel.position.set(0.26, -0.18, -0.28);
+shotgunModel.position.set(0.27, -0.24, -0.36);
 shotgunModel.visible = false;
 gunGroup.add(shotgunModel);
+loadModelInto(shotgunModel, 'assets/guns/blaster-f.glb', { scale: GUN_MODEL_SCALE });
 
-const shotgunWoodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a22, roughness: 0.75 });
-const shotgunAccentMat = new THREE.MeshStandardMaterial({
-  color: 0xff5d5d,
-  emissive: 0x801f1f,
-  emissiveIntensity: 1,
-  roughness: 0.4,
-});
-
-const sgReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.16), gunMat);
-sgReceiver.position.set(0, 0, -0.02);
-shotgunModel.add(sgReceiver);
-
-const sgBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.32, 8), gunMat);
-sgBarrel.rotation.x = Math.PI / 2;
-sgBarrel.position.set(0, 0.025, -0.28);
-shotgunModel.add(sgBarrel);
-
-const sgMagTube = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.28, 8), gunMat);
-sgMagTube.rotation.x = Math.PI / 2;
-sgMagTube.position.set(0, -0.012, -0.26);
-shotgunModel.add(sgMagTube);
-
-const sgPump = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.09), shotgunWoodMat);
-sgPump.position.set(0, -0.005, -0.22);
-shotgunModel.add(sgPump);
-
-const sgStock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.22), shotgunWoodMat);
-sgStock.position.set(0, -0.01, 0.15);
-shotgunModel.add(sgStock);
-
-const sgGrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.06), gunMat);
-sgGrip.position.set(0, -0.075, 0);
-sgGrip.rotation.x = -0.2;
-shotgunModel.add(sgGrip);
-
-const sgAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.3), shotgunAccentMat);
-sgAccent.position.set(0.032, 0.025, -0.15);
-shotgunModel.add(sgAccent);
-
-// ---------- burst rifle view model (fourth purchasable gun) ----------
 const burstModel = new THREE.Group();
-burstModel.position.set(0.25, -0.18, -0.26);
+burstModel.position.set(0.27, -0.24, -0.36);
 burstModel.visible = false;
 gunGroup.add(burstModel);
+loadModelInto(burstModel, 'assets/guns/blaster-j.glb', { scale: GUN_MODEL_SCALE * 1.45 }); // blaster-j is modeled smaller than the others
 
-const burstAccentMat = new THREE.MeshStandardMaterial({
-  color: 0x4dff9d,
-  emissive: 0x158a4f,
-  emissiveIntensity: 1,
-  roughness: 0.4,
-});
-
-const brReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.065, 0.28), gunMat);
-brReceiver.position.set(0, 0, -0.04);
-burstModel.add(brReceiver);
-
-const brBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8), gunMat);
-brBarrel.rotation.x = Math.PI / 2;
-brBarrel.position.set(0, 0.01, -0.32);
-burstModel.add(brBarrel);
-
-const brHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.04, 0.14), gunMat);
-brHandguard.position.set(0, -0.008, -0.22);
-burstModel.add(brHandguard);
-
-const brStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.16), gunMat);
-brStock.position.set(0, -0.005, 0.13);
-burstModel.add(brStock);
-
-const brGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
-brGrip.position.set(0, -0.08, -0.02);
-brGrip.rotation.x = -0.15;
-burstModel.add(brGrip);
-
-const brMag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
-brMag.position.set(0, -0.09, -0.09);
-brMag.rotation.x = 0.2;
-burstModel.add(brMag);
-
-const brDial = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.015), burstAccentMat);
-brDial.position.set(0.033, 0.02, 0);
-burstModel.add(brDial);
-
-const brAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.34), burstAccentMat);
-brAccent.position.set(0.032, 0, -0.15);
-burstModel.add(brAccent);
-
-// ---------- sniper rifle view model (fifth purchasable gun) ----------
 const sniperModel = new THREE.Group();
-sniperModel.position.set(0.25, -0.16, -0.2);
+sniperModel.position.set(0.27, -0.24, -0.36);
 sniperModel.visible = false;
 gunGroup.add(sniperModel);
-
-const sniperAccentMat = new THREE.MeshStandardMaterial({
-  color: 0xffd23d,
-  emissive: 0x8a6a10,
-  emissiveIntensity: 1,
-  roughness: 0.4,
+loadModelInto(sniperModel, 'assets/guns/blaster-o.glb', { scale: GUN_MODEL_SCALE });
+loadModelInto(sniperModel, 'assets/guns/scope-large-a.glb', {
+  scale: GUN_MODEL_SCALE,
+  position: [0, 0.09, -0.04],
 });
-const scopeGlassMat = new THREE.MeshStandardMaterial({
-  color: 0x1a2e3d,
-  emissive: 0x2d5a7a,
-  emissiveIntensity: 0.8,
-  roughness: 0.2,
-  metalness: 0.6,
+loadModelInto(sniperModel, 'assets/guns/silencer-larger.glb', {
+  scale: GUN_MODEL_SCALE,
+  position: [0, 0.01, -0.5],
 });
-
-const snReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.06, 0.3), gunMat);
-snReceiver.position.set(0, 0, -0.05);
-sniperModel.add(snReceiver);
-
-const snBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.55, 8), gunMat);
-snBarrel.rotation.x = Math.PI / 2;
-snBarrel.position.set(0, 0.005, -0.55);
-sniperModel.add(snBarrel);
-
-// muzzle brake: a wider stub at the barrel tip for a heavy-caliber look
-const snMuzzleBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.05, 8), gunMat);
-snMuzzleBrake.rotation.x = Math.PI / 2;
-snMuzzleBrake.position.set(0, 0.005, -0.8);
-sniperModel.add(snMuzzleBrake);
-
-// picatinny-style rail connecting the receiver to the scope mount
-const snRail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.012, 0.24), gunMat);
-snRail.position.set(0, 0.038, -0.14);
-sniperModel.add(snRail);
-
-const snScopeRiser = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.015, 0.06), gunMat);
-snScopeRiser.position.set(0, 0.045, -0.1);
-sniperModel.add(snScopeRiser);
-
-const snScopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.18, 10), gunMat);
-snScopeTube.rotation.x = Math.PI / 2;
-snScopeTube.position.set(0, 0.078, -0.1);
-sniperModel.add(snScopeTube);
-
-// adjustment turret knobs on top of the scope
-const turretGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.02, 8);
-const snTurretTop = new THREE.Mesh(turretGeo, sniperAccentMat);
-snTurretTop.position.set(0, 0.104, -0.13);
-sniperModel.add(snTurretTop);
-const snTurretSide = new THREE.Mesh(turretGeo, sniperAccentMat);
-snTurretSide.rotation.z = Math.PI / 2;
-snTurretSide.position.set(0.034, 0.078, -0.13);
-sniperModel.add(snTurretSide);
-
-const snScopeLensFront = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 10), scopeGlassMat);
-snScopeLensFront.rotation.x = Math.PI / 2;
-snScopeLensFront.position.set(0, 0.075, -0.19);
-sniperModel.add(snScopeLensFront);
-
-const snScopeLensRear = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.02, 10), scopeGlassMat);
-snScopeLensRear.rotation.x = Math.PI / 2;
-snScopeLensRear.position.set(0, 0.075, -0.01);
-sniperModel.add(snScopeLensRear);
-
-const snStock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.28), gunMat);
-snStock.position.set(0, -0.005, 0.19);
-sniperModel.add(snStock);
-
-// raised cheek rest so the sightline lines up with the scope
-const snCheekRest = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.16), shotgunWoodMat);
-snCheekRest.position.set(0, 0.028, 0.16);
-sniperModel.add(snCheekRest);
-
-const snGrip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.1, 0.05), gunMat);
-snGrip.position.set(0, -0.075, -0.05);
-snGrip.rotation.x = -0.15;
-sniperModel.add(snGrip);
-
-const snMag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.13, 0.05), gunMat);
-snMag.position.set(0, -0.11, -0.12);
-snMag.rotation.x = 0.2;
-sniperModel.add(snMag);
-
-const bipodGeo = new THREE.BoxGeometry(0.012, 0.14, 0.012);
-const snBipodL = new THREE.Mesh(bipodGeo, gunMat);
-snBipodL.position.set(-0.04, -0.06, -0.45);
-snBipodL.rotation.z = 0.35;
-sniperModel.add(snBipodL);
-const snBipodR = new THREE.Mesh(bipodGeo, gunMat);
-snBipodR.position.set(0.04, -0.06, -0.45);
-snBipodR.rotation.z = -0.35;
-sniperModel.add(snBipodR);
-
-const snAccent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.005, 0.28), sniperAccentMat);
-snAccent.position.set(0.03, 0, -0.05);
-sniperModel.add(snAccent);
 
 camera.add(gunGroup);
 
@@ -1214,7 +986,7 @@ const GUN_CATALOG = {
     cooldown: 0.18,
     magSize: 10,
     reloadTime: 1.0,
-    muzzle: { x: 0.26, y: -0.155, z: -0.55 },
+    muzzle: { x: 0.28, y: -0.234, z: -0.53 },
   },
   rifle: {
     id: 'rifle',
@@ -1225,7 +997,7 @@ const GUN_CATALOG = {
     cooldown: 0.1,
     magSize: 25,
     reloadTime: 1.6,
-    muzzle: { x: 0.25, y: -0.16, z: -0.84 },
+    muzzle: { x: 0.254, y: -0.216, z: -0.36 },
   },
   shotgun: {
     id: 'shotgun',
@@ -1239,7 +1011,7 @@ const GUN_CATALOG = {
     cooldown: 0.75,
     magSize: 6,
     reloadTime: 2.2,
-    muzzle: { x: 0.26, y: -0.155, z: -0.72 },
+    muzzle: { x: 0.27, y: -0.209, z: -0.589 },
   },
   burst: {
     id: 'burst',
@@ -1253,7 +1025,7 @@ const GUN_CATALOG = {
     cooldown: 0.55, // cooldown starts once the whole burst is triggered
     magSize: 21, // 7 bursts per magazine
     reloadTime: 1.8,
-    muzzle: { x: 0.25, y: -0.17, z: -0.71 },
+    muzzle: { x: 0.27, y: -0.201, z: -0.515 },
   },
   sniper: {
     id: 'sniper',
@@ -1266,7 +1038,7 @@ const GUN_CATALOG = {
     zoomFov: 25, // FOV while aiming down the scope (right-click)
     magSize: 5,
     reloadTime: 2.4,
-    muzzle: { x: 0.25, y: -0.155, z: -1.03 },
+    muzzle: { x: 0.27, y: -0.167, z: -0.96 },
   },
 };
 const gunModelsById = {
@@ -1277,16 +1049,16 @@ const gunModelsById = {
   sniper: sniperModel,
 };
 
-// the specific part on each gun that acts out the reload: a detachable
-// magazine drops out and back in for most guns, while the pump shotgun
-// racks its pump instead. { part, axis, amount } - amount is the local
+// the reload animation dips the whole equipped gun's anchor group (rather
+// than a specific magazine sub-part - the loaded GLB models don't expose a
+// stable named part to grab). { part, axis, amount } - amount is the local
 // offset (in that axis) added at the peak of the reload, then undone.
 const gunReloadPartsById = {
-  pistol: { part: magBase, axis: 'y', amount: -0.22, restY: magBase.position.y },
-  rifle: { part: rifleMag, axis: 'y', amount: -0.24, restY: rifleMag.position.y },
-  shotgun: { part: sgPump, axis: 'z', amount: 0.09, restZ: sgPump.position.z },
-  burst: { part: brMag, axis: 'y', amount: -0.2, restY: brMag.position.y },
-  sniper: { part: snMag, axis: 'y', amount: -0.26, restY: snMag.position.y },
+  pistol: { part: gunModel, axis: 'y', amount: -0.1, restY: gunModel.position.y },
+  rifle: { part: rifleModel, axis: 'y', amount: -0.1, restY: rifleModel.position.y },
+  shotgun: { part: shotgunModel, axis: 'y', amount: -0.1, restY: shotgunModel.position.y },
+  burst: { part: burstModel, axis: 'y', amount: -0.1, restY: burstModel.position.y },
+  sniper: { part: sniperModel, axis: 'y', amount: -0.1, restY: sniperModel.position.y },
 };
 
 const OWNED_GUNS_KEY = 'waveShooterOwnedGuns';
@@ -1474,6 +1246,18 @@ function resolveObstacleCollision(pos, feetY, radius) {
 const raycaster = new THREE.Raycaster();
 const center = new THREE.Vector2(0, 0);
 
+// the enemy model is nested a few levels deep (group -> cloned rig ->
+// bones/skinned mesh), so a raycast hit has to walk back up to the group
+// that's actually registered in enemies[]
+function findEnemyFromHit(object) {
+  let node = object;
+  while (node) {
+    if (node.userData && node.userData.enemyRef) return node.userData.enemyRef;
+    node = node.parent;
+  }
+  return null;
+}
+
 // gun fire is held-triggered so automatic weapons can repeat while the
 // button stays down; semi-auto guns just have a cooldown long enough that
 // holding does nothing extra
@@ -1631,10 +1415,13 @@ function shoot(def) {
     raycaster.setFromCamera(spread ? new THREE.Vector2(jitterX, jitterY) : center, camera);
     const hits = raycaster.intersectObjects(meshes, true);
     if (hits.length > 0) {
-      const hitMesh = hits[0].object;
-      const enemy = enemies.find((en) => en.mesh === hitMesh || en.mesh === hitMesh.parent);
+      const enemy = findEnemyFromHit(hits[0].object);
       if (enemy) {
-        const isHeadshot = !!hitMesh.userData.isHead;
+        // the character model is one skinned mesh (no separate head part to
+        // tag), so headshots are judged by where on its body the hit
+        // landed instead of which sub-mesh was hit
+        const heightAboveFeet = hits[0].point.y - enemy.y;
+        const isHeadshot = heightAboveFeet >= ENEMY_HEIGHT_BASE * ENEMY_TYPES[enemy.kind].scale * 0.82;
         damageEnemy(enemy, isHeadshot ? def.damage * CRIT_MULTIPLIER : def.damage);
         anyHit = true;
         if (isHeadshot) anyCrit = true;
@@ -1683,8 +1470,9 @@ const enemies = [];
 const ENEMY_BASE_HP = 100;
 const ENEMY_HP_PER_WAVE = 8;
 
-// four enemy kinds, each a stat/color/scale variation on the same rig, plus
-// a ranged "spitter" that fights from a distance instead of melee
+// four enemy kinds, each a stat/skin-tint/scale variation on the same
+// animated character rig, plus a ranged "spitter" that fights from a
+// distance instead of melee
 const ENEMY_TYPES = {
   grunt: {
     name: '그런트',
@@ -1692,43 +1480,44 @@ const ENEMY_TYPES = {
     speedMult: 1,
     meleeDamage: 10,
     scale: 1,
-    color: 0x9c2b2b,
-    headColor: 0x7a1f1f,
-    eyeColor: 0xffb347,
-    emissive: 0x2a0000,
+    skin: 'zombieA.png',
+    tint: 0xffffff,
+    emissive: 0x1a0000,
+    accentColor: 0xcc4433,
   },
   runner: {
     name: '러너',
     hpMult: 0.45,
     speedMult: 1.8,
     meleeDamage: 7,
-    scale: 0.75,
-    color: 0xb8b32a,
-    headColor: 0x8f8a20,
-    eyeColor: 0xfff066,
-    emissive: 0x2a2a00,
+    scale: 0.85,
+    skin: 'zombieA.png',
+    tint: 0xd7e86a,
+    emissive: 0x161600,
+    accentColor: 0xd7e86a,
   },
   brute: {
     name: '브루트',
     hpMult: 2.8,
     speedMult: 0.55,
     meleeDamage: 22,
-    scale: 1.5,
-    color: 0x454b58,
-    headColor: 0x33373f,
-    eyeColor: 0xff4d4d,
-    emissive: 0x0a0d12,
+    scale: 1.4,
+    skin: 'zombieC.png',
+    tint: 0x8a97a8,
+    emissive: 0x05070a,
+    accentColor: 0x8a97a8,
   },
   spitter: {
     name: '스피터',
     hpMult: 0.7,
     speedMult: 0.9,
     meleeDamage: 6,
-    scale: 0.95,
-    color: 0x6a2a8f,
-    headColor: 0x4d1f6b,
-    eyeColor: 0xd77bff,
+    scale: 1,
+    skin: 'zombieC.png',
+    tint: 0xcf8aff,
     emissive: 0x1a0a26,
+    accentColor: 0xd77bff,
+    glowColor: 0xd77bff,
     ranged: true,
     attackRange: 13,
     projDamage: 12,
@@ -1747,59 +1536,81 @@ function pickEnemyKind(currentWave) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// ---------- enemy character asset (Kenney Animated Characters Survivors) ----------
+// loaded once and cached; every spawned enemy is a skeleton-aware clone
+// (SkeletonUtils.clone, not a plain clone - required for skinned meshes) so
+// each can run its own animation independently
+const fbxLoader = new FBXLoader();
+const enemyTextureLoader = new THREE.TextureLoader();
+const ENEMY_MODEL_SCALE = 0.0051; // Kenney's character FBX is modeled in cm-ish units
+const ENEMY_HEIGHT_BASE = 1.9; // approx world-space height of a scale:1 enemy, used for headshot judging
+let enemyTemplate = null; // { object, runClip }
+const pendingEnemyBuilds = [];
+
+function tryResolveEnemyTemplate() {
+  if (!enemyTemplate || !enemyTemplate.object || !enemyTemplate.runClip) return;
+  const queued = pendingEnemyBuilds.splice(0, pendingEnemyBuilds.length);
+  queued.forEach((populate) => populate());
+}
+fbxLoader.load(
+  'assets/enemy/characterMedium.fbx',
+  (fbx) => {
+    enemyTemplate = enemyTemplate || {};
+    enemyTemplate.object = fbx;
+    tryResolveEnemyTemplate();
+  },
+  undefined,
+  (err) => console.error('failed to load enemy character', err)
+);
+fbxLoader.load(
+  'assets/enemy/run.fbx',
+  (anim) => {
+    enemyTemplate = enemyTemplate || {};
+    enemyTemplate.runClip = anim.animations[0];
+    tryResolveEnemyTemplate();
+  },
+  undefined,
+  (err) => console.error('failed to load enemy run animation', err)
+);
+
 function buildEnemyMesh(kindDef) {
   const group = new THREE.Group();
+  group.userData.flashMats = [];
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: kindDef.color, roughness: 0.55, emissive: kindDef.emissive });
-  const headMat = new THREE.MeshStandardMaterial({ color: kindDef.headColor, roughness: 0.5, emissive: kindDef.emissive });
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: kindDef.eyeColor,
-    emissive: kindDef.eyeColor,
-    emissiveIntensity: 2.2,
-    roughness: 0.3,
-  });
+  const populate = () => {
+    const model = SkeletonUtils.clone(enemyTemplate.object);
+    model.scale.setScalar(ENEMY_MODEL_SCALE * kindDef.scale);
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.75, 4, 8), bodyMat);
-  body.position.y = 0.78;
-  body.castShadow = true;
-  group.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), headMat);
-  head.position.y = 1.48;
-  head.castShadow = true;
-  head.userData.isHead = true;
-  group.add(head);
-
-  if (kindDef.ranged) {
-    // a glowing energy core instead of a horn, marking it as the caster type
-    const orbMat = new THREE.MeshStandardMaterial({
-      color: kindDef.eyeColor,
-      emissive: kindDef.eyeColor,
-      emissiveIntensity: 2.8,
-      roughness: 0.2,
+    const tex = enemyTextureLoader.load('assets/enemy/' + kindDef.skin);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      color: kindDef.tint,
+      emissive: kindDef.emissive,
+      roughness: 0.85,
     });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), orbMat);
-    orb.position.y = 1.85;
-    orb.userData.isHead = true;
-    group.add(orb);
-  } else {
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 6), bodyMat);
-    horn.position.y = 1.82;
-    horn.userData.isHead = true;
-    group.add(horn);
-  }
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.material = mat;
+        child.castShadow = true;
+      }
+    });
+    group.add(model);
+    group.userData.flashMats.push(mat);
 
-  const eyeGeo = new THREE.SphereGeometry(0.055, 6, 6);
-  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeL.position.set(-0.12, 1.5, 0.24);
-  eyeL.userData.isHead = true;
-  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-  eyeR.position.set(0.12, 1.5, 0.24);
-  eyeR.userData.isHead = true;
-  group.add(eyeL, eyeR);
+    const mixer = new THREE.AnimationMixer(model);
+    mixer.clipAction(enemyTemplate.runClip).play();
+    group.userData.mixer = mixer;
 
-  group.scale.setScalar(kindDef.scale);
-  group.userData.flashMats = [bodyMat, headMat];
+    if (kindDef.ranged) {
+      const glow = new THREE.PointLight(kindDef.glowColor, 1.3, 5);
+      glow.position.y = 1.6 * kindDef.scale;
+      group.add(glow);
+    }
+  };
+
+  if (enemyTemplate && enemyTemplate.object && enemyTemplate.runClip) populate();
+  else pendingEnemyBuilds.push(populate);
+
   return group;
 }
 
@@ -1815,7 +1626,7 @@ function spawnEnemy(speedMult) {
 
   const hp = Math.round((ENEMY_BASE_HP + (wave - 1) * ENEMY_HP_PER_WAVE) * kindDef.hpMult);
 
-  enemies.push({
+  const enemy = {
     mesh,
     kind,
     hp,
@@ -1826,7 +1637,9 @@ function spawnEnemy(speedMult) {
     y: 0,
     velY: 0,
     grounded: true,
-  });
+  };
+  mesh.userData.enemyRef = enemy;
+  enemies.push(enemy);
 }
 
 // ---------- particles (enemy death bursts) ----------
@@ -1863,8 +1676,8 @@ const projectiles = [];
 function spawnEnemyProjectile(fromPos, kindDef) {
   sfxSpit();
   const mat = new THREE.MeshStandardMaterial({
-    color: kindDef.eyeColor,
-    emissive: kindDef.eyeColor,
+    color: kindDef.glowColor,
+    emissive: kindDef.glowColor,
     emissiveIntensity: 2.5,
     roughness: 0.2,
   });
@@ -1898,7 +1711,7 @@ function damageEnemy(enemy, amount) {
 
   if (enemy.hp <= 0) {
     sfxEnemyDeath();
-    spawnDeathBurst(enemy.mesh.position, ENEMY_TYPES[enemy.kind].color);
+    spawnDeathBurst(enemy.mesh.position, ENEMY_TYPES[enemy.kind].accentColor);
     scene.remove(enemy.mesh);
     const idx = enemies.indexOf(enemy);
     if (idx !== -1) enemies.splice(idx, 1);
@@ -2103,7 +1916,7 @@ function drawMinimap() {
   // enemies as small dots colored by kind
   for (const enemy of enemies) {
     const p = worldToMinimap(enemy.mesh.position.x, enemy.mesh.position.z);
-    ctx.fillStyle = hexColor(ENEMY_TYPES[enemy.kind].color);
+    ctx.fillStyle = hexColor(ENEMY_TYPES[enemy.kind].accentColor);
     ctx.beginPath();
     ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -2244,6 +2057,7 @@ function animate() {
     // enemies
     for (const enemy of enemies) {
       const kindDef = ENEMY_TYPES[enemy.kind];
+      if (enemy.mesh.userData.mixer) enemy.mesh.userData.mixer.update(delta);
       const dir = new THREE.Vector3(
         camera.position.x - enemy.mesh.position.x,
         0,
@@ -2478,3 +2292,19 @@ applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();
+
+window.__debug = {
+  camera,
+  gunGroup,
+  gunModel,
+  rifleModel,
+  shotgunModel,
+  burstModel,
+  sniperModel,
+  THREE,
+  scene,
+  enemies,
+  ENEMY_TYPES,
+  spawnEnemy,
+  buildEnemyMesh,
+};

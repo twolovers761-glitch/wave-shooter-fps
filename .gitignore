@@ -1,0 +1,3 @@
+# raw downloaded asset packs (zips + full extracted kits) - only the
+# specific files actually used are copied into assets/ and committed
+assets-src/
