@@ -1938,6 +1938,64 @@ function resetGame() {
   updateHUD();
 }
 
+// ---------- minimap ----------
+// a static (north-up) top-down radar drawn each frame onto a small 2D canvas
+const minimapCanvas = document.getElementById('minimap-canvas');
+const minimapCtx = minimapCanvas.getContext('2d');
+const MINIMAP_SIZE = 160;
+const MINIMAP_SCALE = MINIMAP_SIZE / (ARENA_SIZE * 2); // world units -> minimap px
+
+function worldToMinimap(x, z) {
+  return { x: MINIMAP_SIZE / 2 + x * MINIMAP_SCALE, y: MINIMAP_SIZE / 2 + z * MINIMAP_SCALE };
+}
+
+function hexColor(n) {
+  return '#' + n.toString(16).padStart(6, '0');
+}
+
+function drawMinimap() {
+  const ctx = minimapCtx;
+  ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+
+  ctx.fillStyle = 'rgba(20, 26, 36, 0.5)';
+  ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+
+  // obstacles (cover, platforms, corner pillars) as faint squares
+  ctx.fillStyle = 'rgba(150, 165, 185, 0.45)';
+  for (const ob of obstacles) {
+    const p = worldToMinimap(ob.x, ob.z);
+    const size = Math.max(2, ob.hx * MINIMAP_SCALE * 2);
+    ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+  }
+
+  // enemies as small dots colored by kind
+  for (const enemy of enemies) {
+    const p = worldToMinimap(enemy.mesh.position.x, enemy.mesh.position.z);
+    ctx.fillStyle = hexColor(ENEMY_TYPES[enemy.kind].color);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // player as a heading arrow
+  const pp = worldToMinimap(camera.position.x, camera.position.z);
+  const facing = new THREE.Vector3();
+  camera.getWorldDirection(facing);
+  const heading = Math.atan2(facing.z, facing.x) + Math.PI / 2;
+  ctx.save();
+  ctx.translate(pp.x, pp.y);
+  ctx.rotate(heading);
+  ctx.fillStyle = '#4dd8ff';
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.lineTo(4, 5);
+  ctx.lineTo(0, 2.5);
+  ctx.lineTo(-4, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 // ---------- main loop ----------
 const clock = new THREE.Clock();
 
@@ -2161,6 +2219,8 @@ function animate() {
       }, 1800);
       updateHUD();
     }
+
+    drawMinimap();
   }
 
   dust.rotation.y += delta * 0.03;
