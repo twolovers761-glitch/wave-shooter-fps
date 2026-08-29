@@ -9,19 +9,18 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const masterGain = audioCtx.createGain();
 masterGain.gain.value = 0.7;
 
-// a low-shelf boost on the final output - makes everything with real bass
-// content (thumps, gunshots) sit heavier, while barely touching thin
-// high-frequency sounds like UI clicks
+// a small low-shelf nudge on the final output - just enough sub-bass
+// support to feel physical without smearing the sound into mush
 const bassBoost = audioCtx.createBiquadFilter();
 bassBoost.type = 'lowshelf';
-bassBoost.frequency.value = 160;
-bassBoost.gain.value = 7;
+bassBoost.frequency.value = 110;
+bassBoost.gain.value = 3;
 masterGain.connect(bassBoost);
 bassBoost.connect(audioCtx.destination);
 
 // a soft-clip saturation stage that impact sounds route through for a
-// grittier, heavier character - clean UI sounds skip it and go straight
-// to masterGain
+// grittier character - clean UI sounds and crack transients skip it so
+// they stay sharp instead of turning to mush
 function makeDistortionCurve(amount) {
   const n = 44100;
   const curve = new Float32Array(n);
@@ -32,7 +31,7 @@ function makeDistortionCurve(amount) {
   return curve;
 }
 const grit = audioCtx.createWaveShaper();
-grit.curve = makeDistortionCurve(28);
+grit.curve = makeDistortionCurve(16);
 grit.oversample = '4x';
 grit.connect(masterGain);
 
@@ -102,6 +101,29 @@ function playNoise({ duration = 0.15, volume = 0.3, filterFreq = 1200, delay = 0
   noise.stop(t0 + duration + 0.02);
 }
 
+// a sharp, bright "crack" transient - real gunshots are mostly this: a very
+// short burst of high-frequency energy, not a bass boom. Linear (not
+// exponential) decay so the cutoff itself feels snappy.
+function playCrack({ duration = 0.02, volume = 0.5, highpassFreq = 1600, delay = 0, bus = masterGain, echo = 0 }) {
+  const t0 = audioCtx.currentTime + delay;
+  const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = highpassFreq;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(volume, t0);
+  gain.gain.linearRampToValueAtTime(0.0001, t0 + duration);
+  noise.connect(filter).connect(gain);
+  connectWithEcho(gain, bus, echo);
+  noise.start(t0);
+  noise.stop(t0 + duration + 0.01);
+}
+
 // a punchy sub-bass "thump": fast attack, a brief hold at full volume, then
 // a slower decay - the hold is what keeps it from sounding like a "pop"
 function playThump({ freq = 60, freqEnd = 25, duration = 0.3, hold = 0.03, volume = 0.5, delay = 0, bus = masterGain, echo = 0 }) {
@@ -121,32 +143,36 @@ function playThump({ freq = 60, freqEnd = 25, duration = 0.3, hold = 0.03, volum
   osc.stop(t0 + duration + 0.02);
 }
 
+// real gunshots are mostly a sharp, bright, dry "crack" - the low end is
+// only the supporting body, not the main event. Each shot layers:
+// crack (bright, immediate, little/no echo) -> body (short mid snap) ->
+// a tamed low punch (brief, not a boom) -> for bigger guns, a real tail.
 const GUN_SHOT_SFX = {
   pistol: () => {
-    playThump({ freq: 85, freqEnd: 30, duration: 0.22, hold: 0.02, volume: 0.55, echo: 0.25 });
-    playTone({ freq: 180, freqEnd: 60, duration: 0.1, type: 'square', volume: 0.3, bus: grit });
-    playNoise({ duration: 0.09, volume: 0.28, filterFreq: 2000, bus: grit, echo: 0.15 });
+    playCrack({ duration: 0.018, volume: 0.55, highpassFreq: 1800 });
+    playTone({ freq: 220, freqEnd: 90, duration: 0.05, type: 'square', volume: 0.22, bus: grit });
+    playThump({ freq: 75, freqEnd: 32, duration: 0.13, hold: 0.006, volume: 0.32, echo: 0.12 });
   },
   rifle: () => {
-    playThump({ freq: 90, freqEnd: 32, duration: 0.16, hold: 0.015, volume: 0.45, echo: 0.2 });
-    playTone({ freq: 160, freqEnd: 55, duration: 0.07, type: 'square', volume: 0.26, bus: grit });
-    playNoise({ duration: 0.06, volume: 0.26, filterFreq: 2400, bus: grit });
+    playCrack({ duration: 0.014, volume: 0.5, highpassFreq: 2000 });
+    playTone({ freq: 200, freqEnd: 85, duration: 0.04, type: 'square', volume: 0.2, bus: grit });
+    playThump({ freq: 80, freqEnd: 34, duration: 0.1, hold: 0.004, volume: 0.26, echo: 0.08 });
   },
   shotgun: () => {
-    playThump({ freq: 45, freqEnd: 20, duration: 0.55, hold: 0.05, volume: 0.85, echo: 0.4 });
-    playNoise({ duration: 0.4, volume: 0.55, filterFreq: 550, bus: grit, echo: 0.3 });
-    playTone({ freq: 75, freqEnd: 28, duration: 0.32, type: 'sawtooth', volume: 0.4, bus: grit });
+    playCrack({ duration: 0.03, volume: 0.6, highpassFreq: 1100, bus: grit });
+    playNoise({ duration: 0.16, volume: 0.42, filterFreq: 1600, bus: grit, echo: 0.15 });
+    playThump({ freq: 48, freqEnd: 22, duration: 0.3, hold: 0.02, volume: 0.55, echo: 0.28 });
   },
   burst: () => {
-    playThump({ freq: 88, freqEnd: 32, duration: 0.14, hold: 0.01, volume: 0.4, echo: 0.15 });
-    playTone({ freq: 165, freqEnd: 60, duration: 0.06, type: 'square', volume: 0.24, bus: grit });
-    playNoise({ duration: 0.05, volume: 0.22, filterFreq: 2400, bus: grit });
+    playCrack({ duration: 0.013, volume: 0.45, highpassFreq: 2000 });
+    playTone({ freq: 205, freqEnd: 88, duration: 0.035, type: 'square', volume: 0.19, bus: grit });
+    playThump({ freq: 82, freqEnd: 34, duration: 0.09, hold: 0.004, volume: 0.22, echo: 0.08 });
   },
   sniper: () => {
-    playThump({ freq: 36, freqEnd: 15, duration: 0.85, hold: 0.08, volume: 0.95, echo: 0.5 });
-    playTone({ freq: 60, freqEnd: 20, duration: 0.5, type: 'sawtooth', volume: 0.5, bus: grit });
-    playNoise({ duration: 0.4, volume: 0.42, filterFreq: 450, bus: grit, echo: 0.35 });
-    playNoise({ duration: 0.3, volume: 0.2, filterFreq: 320, delay: 0.11, echo: 0.3 }); // trailing crack/echo
+    playCrack({ duration: 0.026, volume: 0.7, highpassFreq: 1000, bus: grit });
+    playTone({ freq: 160, freqEnd: 55, duration: 0.14, type: 'sawtooth', volume: 0.36, bus: grit });
+    playThump({ freq: 42, freqEnd: 18, duration: 0.4, hold: 0.03, volume: 0.55, echo: 0.35 });
+    playNoise({ duration: 0.28, volume: 0.16, filterFreq: 700, delay: 0.1, echo: 0.35 }); // distant echo tail
   },
 };
 
@@ -169,24 +195,27 @@ function sfxKnifeSwing() {
   playNoise({ duration: 0.12, volume: 0.2, filterFreq: 4000 });
 }
 function sfxHit() {
-  playThump({ freq: 150, freqEnd: 50, duration: 0.16, hold: 0.01, volume: 0.4, echo: 0.15 });
-  playTone({ freq: 220, duration: 0.05, type: 'triangle', volume: 0.15, bus: grit });
+  playCrack({ duration: 0.012, volume: 0.35, highpassFreq: 2200 });
+  playThump({ freq: 150, freqEnd: 55, duration: 0.1, hold: 0.005, volume: 0.28, echo: 0.1 });
 }
 function sfxCrit() {
-  playThump({ freq: 170, freqEnd: 55, duration: 0.2, hold: 0.02, volume: 0.5, echo: 0.2 });
+  playCrack({ duration: 0.015, volume: 0.45, highpassFreq: 2400 });
+  playThump({ freq: 170, freqEnd: 60, duration: 0.13, hold: 0.008, volume: 0.35, echo: 0.15 });
   playTone({ freq: 520, freqEnd: 900, duration: 0.14, type: 'square', volume: 0.32 });
 }
-// the kill confirmation: a heavier, longer descending boom with more echo
-// than a regular hit, so a kill clearly reads as bigger than just a hit
+// the kill confirmation is its own distinct shape, not just a bigger hit:
+// a sharp finishing crack, a crunch of "debris", a falling pitch sweep as
+// the enemy goes down, then a beat later a soft body-drop thud
 function sfxEnemyDeath() {
-  playThump({ freq: 110, freqEnd: 24, duration: 0.45, hold: 0.03, volume: 0.6, echo: 0.35 });
-  playNoise({ duration: 0.3, volume: 0.32, filterFreq: 700, bus: grit, echo: 0.25 });
-  playTone({ freq: 180, freqEnd: 30, duration: 0.35, type: 'sawtooth', volume: 0.26, bus: grit });
-  playTone({ freq: 90, freqEnd: 20, duration: 0.4, type: 'sine', volume: 0.2, delay: 0.03, echo: 0.3 });
+  playCrack({ duration: 0.018, volume: 0.5, highpassFreq: 1800 });
+  playNoise({ duration: 0.09, volume: 0.4, filterFreq: 1000, bus: grit, delay: 0.015 });
+  playTone({ freq: 480, freqEnd: 50, duration: 0.3, type: 'square', volume: 0.26, bus: grit, delay: 0.02 });
+  playThump({ freq: 70, freqEnd: 25, duration: 0.28, hold: 0.02, volume: 0.4, echo: 0.3, delay: 0.24 });
 }
 function sfxPlayerHurt() {
-  playThump({ freq: 70, freqEnd: 22, duration: 0.3, hold: 0.02, volume: 0.55, echo: 0.2 });
-  playTone({ freq: 120, freqEnd: 45, duration: 0.18, type: 'sawtooth', volume: 0.28, bus: grit });
+  playCrack({ duration: 0.016, volume: 0.4, highpassFreq: 1600 });
+  playThump({ freq: 70, freqEnd: 24, duration: 0.22, hold: 0.015, volume: 0.42, echo: 0.15 });
+  playTone({ freq: 120, freqEnd: 45, duration: 0.14, type: 'sawtooth', volume: 0.22, bus: grit });
 }
 function sfxJump() {
   playTone({ freq: 300, freqEnd: 520, duration: 0.1, type: 'sine', volume: 0.15 });
