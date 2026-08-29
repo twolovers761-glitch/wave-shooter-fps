@@ -286,6 +286,19 @@ scene.fog = new THREE.Fog(FOG_COLOR, 15, 48);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0, 1.7, 0);
 
+// the held weapon (gun/knife/hands) renders in its own pass with its own
+// camera sharing the main camera's position/rotation/FOV every frame, but
+// with a much smaller near plane - close-up viewmodel geometry would
+// otherwise poke through the main camera's near clip plane since it sits
+// only centimeters away. The depth buffer is cleared between passes so the
+// weapon always draws on top, never poking into/through world geometry.
+const weaponScene = new THREE.Scene();
+const weaponCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 5);
+weaponScene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const weaponLight = new THREE.DirectionalLight(0xffffff, 0.8);
+weaponLight.position.set(0.5, 1, 0.8);
+weaponScene.add(weaponLight);
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -295,6 +308,8 @@ document.body.appendChild(renderer.domElement);
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  weaponCamera.aspect = camera.aspect;
+  weaponCamera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -708,35 +723,36 @@ const GUN_MODEL_SCALE = 0.35;
 
 const gunGroup = new THREE.Group();
 
+// with the weapon camera's own near plane handling close-up clipping now,
+// these can sit at a normal, close FPS viewmodel distance again
 const gunModel = new THREE.Group();
-gunModel.position.set(0.26, -0.13, -0.55);
+gunModel.position.set(0.2, -0.11, -0.32);
 gunGroup.add(gunModel);
 loadModelInto(gunModel, 'assets/guns/blaster-a.glb', { scale: GUN_MODEL_SCALE });
 
 const rifleModel = new THREE.Group();
-rifleModel.position.set(0.25, -0.13, -0.55);
+rifleModel.position.set(0.2, -0.11, -0.32);
 rifleModel.visible = false;
 gunGroup.add(rifleModel);
 // blaster-e's own pivot sits far toward its front/muzzle end (unlike the
-// other blasters, which are centered on themselves) - without this offset
-// most of its body sits almost on top of the camera, inside the near clip
-// plane, and only the muzzle survives clipping
-loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE, position: [0, 0, -0.38] });
+// other blasters, which are centered on themselves) - this local offset
+// cancels that bias so it behaves like the rest
+loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE, position: [0, 0, -0.32] });
 
 const shotgunModel = new THREE.Group();
-shotgunModel.position.set(0.25, -0.13, -0.55);
+shotgunModel.position.set(0.2, -0.11, -0.32);
 shotgunModel.visible = false;
 gunGroup.add(shotgunModel);
 loadModelInto(shotgunModel, 'assets/guns/blaster-p.glb', { scale: GUN_MODEL_SCALE });
 
 const burstModel = new THREE.Group();
-burstModel.position.set(0.25, -0.13, -0.55);
+burstModel.position.set(0.2, -0.11, -0.32);
 burstModel.visible = false;
 gunGroup.add(burstModel);
 loadModelInto(burstModel, 'assets/guns/blaster-j.glb', { scale: GUN_MODEL_SCALE * 1.45 }); // blaster-j is modeled smaller than the others
 
 const sniperModel = new THREE.Group();
-sniperModel.position.set(0.25, -0.13, -0.55);
+sniperModel.position.set(0.2, -0.11, -0.32);
 sniperModel.visible = false;
 gunGroup.add(sniperModel);
 loadModelInto(sniperModel, 'assets/guns/blaster-o.glb', { scale: GUN_MODEL_SCALE });
@@ -749,7 +765,53 @@ loadModelInto(sniperModel, 'assets/guns/silencer-larger.glb', {
   position: [0, 0.01, -0.5],
 });
 
-camera.add(gunGroup);
+// a simple stylized hand+sleeve (primitives, no hand asset in the kit) so
+// the weapon doesn't look like it's floating in mid-air on its own
+function buildHand() {
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.75 });
+  const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x262b33, roughness: 0.85 });
+
+  // kept compact and close to the group origin (nothing reaching far in any
+  // direction) so it can't end up behind the camera or outside the frustum
+  // regardless of exactly where the hand group gets placed
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.054, 0.09, 8), sleeveMat);
+  cuff.rotation.z = Math.PI / 2.2;
+  cuff.position.set(0.05, -0.02, 0.02);
+  group.add(cuff);
+
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.04, 0.05, 8), skinMat);
+  wrist.rotation.z = Math.PI / 2.2;
+  wrist.position.set(0.01, -0.01, 0);
+  group.add(wrist);
+
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.045, 0.08), skinMat);
+  palm.position.set(-0.01, 0, -0.03);
+  palm.rotation.y = 0.15;
+  group.add(palm);
+
+  const fingerGeo = new THREE.BoxGeometry(0.016, 0.02, 0.065);
+  for (let i = 0; i < 4; i++) {
+    const finger = new THREE.Mesh(fingerGeo, skinMat);
+    finger.position.set(-0.04 + i * 0.019, 0.026, -0.06);
+    finger.rotation.x = -0.35;
+    group.add(finger);
+  }
+
+  const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.017, 0.045), skinMat);
+  thumb.position.set(-0.045, -0.012, -0.015);
+  thumb.rotation.z = 0.9;
+  group.add(thumb);
+
+  return group;
+}
+
+const gunHand = buildHand();
+gunHand.position.set(0.14, -0.15, -0.24);
+gunHand.rotation.y = -0.35;
+gunGroup.add(gunHand);
+
+weaponScene.add(gunGroup);
 
 // ---------- knife view model ----------
 const knifeGroup = new THREE.Group();
@@ -785,17 +847,20 @@ const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), guardMat);
 pommel.position.set(0, 0, 0.135);
 knifeGroup.add(pommel);
 
+const knifeHand = buildHand();
+knifeHand.position.set(0, -0.01, 0.08);
+knifeHand.rotation.y = -0.1;
+knifeGroup.add(knifeHand);
+
 knifeGroup.position.set(0.26, -0.24, -0.4);
 knifeGroup.rotation.x = -0.3;
 knifeGroup.visible = false;
-camera.add(knifeGroup);
-
-scene.add(camera);
+weaponScene.add(knifeGroup);
 
 // muzzle flash: a point light plus a soft glow sprite at the barrel tip
 const flashLight = new THREE.PointLight(0xffcc66, 0, 4);
 flashLight.position.set(0.26, -0.155, -0.55);
-camera.add(flashLight);
+weaponScene.add(flashLight);
 
 function makeGlowTexture() {
   const size = 64;
@@ -817,7 +882,7 @@ const muzzleSprite = new THREE.Sprite(
 );
 muzzleSprite.scale.set(0, 0, 0);
 muzzleSprite.position.set(0.26, -0.15, -0.57);
-camera.add(muzzleSprite);
+weaponScene.add(muzzleSprite);
 
 // ---------- intro / loading screen ----------
 const introScreen = document.getElementById('intro-screen');
@@ -1020,7 +1085,7 @@ const GUN_CATALOG = {
     cooldown: 0.18,
     magSize: 10,
     reloadTime: 1.0,
-    muzzle: { x: 0.26, y: -0.106, z: -0.68 },
+    muzzle: { x: 0.2, y: -0.076, z: -0.45 },
   },
   rifle: {
     id: 'rifle',
@@ -1031,7 +1096,7 @@ const GUN_CATALOG = {
     cooldown: 0.1,
     magSize: 25,
     reloadTime: 1.6,
-    muzzle: { x: 0.25, y: -0.094, z: -0.93 },
+    muzzle: { x: 0.184, y: -0.064, z: -0.64 },
   },
   shotgun: {
     id: 'shotgun',
@@ -1045,7 +1110,7 @@ const GUN_CATALOG = {
     cooldown: 0.75,
     magSize: 6,
     reloadTime: 2.2,
-    muzzle: { x: 0.25, y: -0.095, z: -0.701 },
+    muzzle: { x: 0.2, y: -0.065, z: -0.471 },
   },
   burst: {
     id: 'burst',
@@ -1059,7 +1124,7 @@ const GUN_CATALOG = {
     cooldown: 0.55, // cooldown starts once the whole burst is triggered
     magSize: 21, // 7 bursts per magazine
     reloadTime: 1.8,
-    muzzle: { x: 0.25, y: -0.067, z: -0.705 },
+    muzzle: { x: 0.2, y: -0.037, z: -0.475 },
   },
   sniper: {
     id: 'sniper',
@@ -1072,7 +1137,7 @@ const GUN_CATALOG = {
     zoomFov: 25, // FOV while aiming down the scope (right-click)
     magSize: 5,
     reloadTime: 2.4,
-    muzzle: { x: 0.25, y: -0.032, z: -1.149 },
+    muzzle: { x: 0.2, y: -0.002, z: -0.919 },
   },
 };
 const gunModelsById = {
@@ -2210,7 +2275,25 @@ function animate() {
 
   dust.rotation.y += delta * 0.03;
 
+  // keep the weapon camera locked to the main camera's view every frame
+  // (position/rotation, including the sniper scope zoom). Its FOV is kept
+  // noticeably wider than the main camera's, not matched to it - the weapon
+  // sits centimeters away, so it needs a much roomier frustum to avoid
+  // clipping at the edges than the world does; players don't consciously
+  // notice the mismatch since it's a completely separate render pass.
+  weaponCamera.position.copy(camera.position);
+  weaponCamera.quaternion.copy(camera.quaternion);
+  const targetWeaponFov = Math.min(120, camera.fov + 35);
+  if (weaponCamera.fov !== targetWeaponFov) {
+    weaponCamera.fov = targetWeaponFov;
+    weaponCamera.updateProjectionMatrix();
+  }
+
   renderer.render(scene, camera);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(weaponScene, weaponCamera);
+  renderer.autoClear = true;
 }
 
 function gunStatsLabel(def) {
