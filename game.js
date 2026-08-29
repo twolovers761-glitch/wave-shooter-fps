@@ -811,7 +811,11 @@ gunHand.position.set(0.14, -0.15, -0.24);
 gunHand.rotation.y = -0.35;
 gunGroup.add(gunHand);
 
-weaponScene.add(gunGroup);
+// parented to weaponCamera (not weaponScene) so it rides along with the
+// player automatically - weaponScene coordinates are world space, and these
+// anchor positions are tiny offsets meant to sit right in front of whatever
+// camera is looking at, not a fixed spot near the world origin
+weaponCamera.add(gunGroup);
 
 // ---------- knife view model ----------
 const knifeGroup = new THREE.Group();
@@ -855,12 +859,12 @@ knifeGroup.add(knifeHand);
 knifeGroup.position.set(0.26, -0.24, -0.4);
 knifeGroup.rotation.x = -0.3;
 knifeGroup.visible = false;
-weaponScene.add(knifeGroup);
+weaponCamera.add(knifeGroup);
 
 // muzzle flash: a point light plus a soft glow sprite at the barrel tip
 const flashLight = new THREE.PointLight(0xffcc66, 0, 4);
 flashLight.position.set(0.26, -0.155, -0.55);
-weaponScene.add(flashLight);
+weaponCamera.add(flashLight);
 
 function makeGlowTexture() {
   const size = 64;
@@ -882,7 +886,7 @@ const muzzleSprite = new THREE.Sprite(
 );
 muzzleSprite.scale.set(0, 0, 0);
 muzzleSprite.position.set(0.26, -0.15, -0.57);
-weaponScene.add(muzzleSprite);
+weaponCamera.add(muzzleSprite);
 
 // ---------- intro / loading screen ----------
 const introScreen = document.getElementById('intro-screen');
