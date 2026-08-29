@@ -1,6 +1,122 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+// ---------- audio ----------
+// every sound is synthesized with the Web Audio API (oscillators + filtered
+// noise) instead of loaded audio files, so there's nothing to download and
+// no asset-loading delay
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.7;
+masterGain.connect(audioCtx.destination);
+
+function unlockAudio() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone({ freq = 440, freqEnd = null, duration = 0.1, type = 'sine', volume = 0.3, delay = 0 }) {
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if (freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), t0 + duration);
+  gain.gain.setValueAtTime(volume, t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+  osc.connect(gain).connect(masterGain);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.02);
+}
+
+function playNoise({ duration = 0.15, volume = 0.3, filterFreq = 1200, delay = 0 }) {
+  const t0 = audioCtx.currentTime + delay;
+  const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = filterFreq;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(volume, t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+  noise.connect(filter).connect(gain).connect(masterGain);
+  noise.start(t0);
+  noise.stop(t0 + duration + 0.02);
+}
+
+const GUN_SHOT_SFX = {
+  pistol: () => {
+    playTone({ freq: 180, freqEnd: 80, duration: 0.09, type: 'square', volume: 0.35 });
+    playNoise({ duration: 0.05, volume: 0.25, filterFreq: 2500 });
+  },
+  rifle: () => {
+    playTone({ freq: 150, freqEnd: 70, duration: 0.07, type: 'square', volume: 0.3 });
+    playNoise({ duration: 0.05, volume: 0.28, filterFreq: 3000 });
+  },
+  shotgun: () => {
+    playNoise({ duration: 0.22, volume: 0.45, filterFreq: 900 });
+    playTone({ freq: 90, freqEnd: 40, duration: 0.18, type: 'sawtooth', volume: 0.3 });
+  },
+  burst: () => {
+    playTone({ freq: 160, freqEnd: 75, duration: 0.06, type: 'square', volume: 0.28 });
+    playNoise({ duration: 0.04, volume: 0.22, filterFreq: 2800 });
+  },
+  sniper: () => {
+    playTone({ freq: 70, freqEnd: 28, duration: 0.35, type: 'sawtooth', volume: 0.5 });
+    playNoise({ duration: 0.3, volume: 0.35, filterFreq: 600 });
+  },
+};
+
+function sfxShot(gunId) {
+  (GUN_SHOT_SFX[gunId] || GUN_SHOT_SFX.pistol)();
+}
+function sfxEmptyClick() {
+  playTone({ freq: 220, duration: 0.04, type: 'square', volume: 0.15 });
+}
+function sfxReloadStart() {
+  playTone({ freq: 320, duration: 0.05, type: 'square', volume: 0.15 });
+}
+function sfxReloadDone() {
+  playTone({ freq: 520, duration: 0.06, type: 'square', volume: 0.2 });
+  playTone({ freq: 740, duration: 0.08, type: 'square', volume: 0.2, delay: 0.07 });
+}
+function sfxKnifeSwing() {
+  playNoise({ duration: 0.12, volume: 0.2, filterFreq: 4000 });
+}
+function sfxHit() {
+  playTone({ freq: 220, duration: 0.06, type: 'triangle', volume: 0.2 });
+}
+function sfxCrit() {
+  playTone({ freq: 520, freqEnd: 900, duration: 0.12, type: 'square', volume: 0.3 });
+}
+function sfxEnemyDeath() {
+  playNoise({ duration: 0.18, volume: 0.25, filterFreq: 800 });
+  playTone({ freq: 150, freqEnd: 40, duration: 0.2, type: 'sawtooth', volume: 0.2 });
+}
+function sfxPlayerHurt() {
+  playTone({ freq: 120, freqEnd: 55, duration: 0.15, type: 'sawtooth', volume: 0.3 });
+}
+function sfxJump() {
+  playTone({ freq: 300, freqEnd: 520, duration: 0.1, type: 'sine', volume: 0.15 });
+}
+function sfxWaveStart() {
+  playTone({ freq: 440, duration: 0.12, type: 'triangle', volume: 0.25 });
+  playTone({ freq: 660, duration: 0.15, type: 'triangle', volume: 0.25, delay: 0.12 });
+}
+function sfxUIClick() {
+  playTone({ freq: 600, duration: 0.04, type: 'square', volume: 0.15 });
+}
+function sfxPurchase() {
+  playTone({ freq: 500, duration: 0.08, type: 'triangle', volume: 0.2 });
+  playTone({ freq: 750, duration: 0.1, type: 'triangle', volume: 0.2, delay: 0.08 });
+}
+function sfxHeartbeat() {
+  playTone({ freq: 55, duration: 0.12, type: 'sine', volume: 0.4 });
+}
+
 // ---------- basic setup ----------
 const scene = new THREE.Scene();
 const FOG_COLOR = 0x0d1420;
@@ -668,9 +784,19 @@ setTimeout(() => introPrompt.classList.remove('hidden'), 1300);
 
 introScreen.addEventListener('click', () => {
   if (introPrompt.classList.contains('hidden')) return; // still "loading"
+  unlockAudio();
   introScreen.classList.add('fade-out');
   setTimeout(() => introScreen.classList.add('hidden'), 400);
   document.getElementById('start-screen').classList.remove('hidden');
+});
+
+// every button click gets a light UI blip - unlockAudio() here too since a
+// browser may not have granted audio yet if this is somehow the first click
+document.addEventListener('click', (e) => {
+  if (e.target.closest('button')) {
+    unlockAudio();
+    sfxUIClick();
+  }
 });
 
 // ---------- controls ----------
@@ -694,6 +820,7 @@ restartBtn.addEventListener('click', () => {
 let needsWaveStart = true;
 
 controls.addEventListener('lock', () => {
+  unlockAudio();
   startScreen.classList.add('hidden');
   pauseScreen.classList.add('hidden');
   gameState = 'playing';
@@ -748,6 +875,32 @@ fovSlider.addEventListener('input', () => {
     camera.updateProjectionMatrix();
   }
   fovVal.textContent = v;
+});
+
+const VOLUME_KEY = 'waveShooterVolume';
+const volumeSlider = document.getElementById('volume-slider');
+const volumeVal = document.getElementById('volume-val');
+function loadVolume() {
+  try {
+    const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
+    return Number.isFinite(saved) ? saved : 70;
+  } catch (e) {
+    return 70;
+  }
+}
+const savedVolume = loadVolume();
+volumeSlider.value = savedVolume;
+volumeVal.textContent = savedVolume;
+masterGain.gain.value = savedVolume / 100;
+volumeSlider.addEventListener('input', () => {
+  const v = parseFloat(volumeSlider.value);
+  masterGain.gain.value = v / 100;
+  volumeVal.textContent = v;
+  try {
+    localStorage.setItem(VOLUME_KEY, String(v));
+  } catch (e) {
+    // ignore - setting still applies for this session
+  }
 });
 
 const NUMKEY_SETTING_KEY = 'waveShooterNumKeySwitch';
@@ -1161,6 +1314,7 @@ function cancelReload() {
 function startReload() {
   const def = GUN_CATALOG[equippedGunId];
   if (isReloading || ammoState[def.id] >= def.magSize) return;
+  sfxReloadStart();
   isReloading = true;
   reloadDuration = def.reloadTime;
   reloadTimer = def.reloadTime;
@@ -1179,6 +1333,7 @@ function tryFireGun() {
   if (gunFireTimer > 0 || isReloading) return;
   const def = GUN_CATALOG[equippedGunId];
   if ((ammoState[def.id] || 0) <= 0) {
+    sfxEmptyClick();
     startReload();
     return;
   }
@@ -1198,6 +1353,7 @@ function tryFireGun() {
 function shoot(def) {
   ammoState[def.id] = Math.max(0, (ammoState[def.id] || 0) - 1);
   updateAmmoHUD();
+  sfxShot(def.id);
   const recoilMult = def.recoilMult || 1;
   flashLight.intensity = 3;
   recoil = 0.08 * recoilMult;
@@ -1230,7 +1386,11 @@ function shoot(def) {
       }
     }
   }
-  if (anyHit) showHitMarker(anyCrit);
+  if (anyHit) {
+    showHitMarker(anyCrit);
+    if (anyCrit) sfxCrit();
+    else sfxHit();
+  }
 }
 
 function meleeAttack() {
@@ -1238,6 +1398,7 @@ function meleeAttack() {
   knifeCooldown = KNIFE_COOLDOWN;
   knifeSwing = 1;
   pulseCrosshair();
+  sfxKnifeSwing();
 
   const camDir = new THREE.Vector3();
   camera.getWorldDirection(camDir);
@@ -1258,6 +1419,7 @@ function meleeAttack() {
   if (target) {
     damageEnemy(target, KNIFE_DAMAGE);
     showHitMarker();
+    sfxHit();
   }
 }
 
@@ -1366,6 +1528,7 @@ function damageEnemy(enemy, amount) {
   setTimeout(() => flashMats.forEach((m) => m.emissive.setHex(0x2a0000)), 60);
 
   if (enemy.hp <= 0) {
+    sfxEnemyDeath();
     spawnDeathBurst(enemy.mesh.position);
     scene.remove(enemy.mesh);
     const idx = enemies.indexOf(enemy);
@@ -1392,6 +1555,7 @@ function showWaveBanner(n) {
 function startWave() {
   waveActive = true;
   showWaveBanner(wave);
+  sfxWaveStart();
   const count = 3 + wave * 2;
   const speedMult = 1 + wave * 0.08;
   for (let i = 0; i < count; i++) {
@@ -1413,6 +1577,7 @@ const scoreValEl = document.getElementById('score-val');
 const waveValEl = document.getElementById('wave-val');
 const finalScoreEl = document.getElementById('final-score');
 const lowHpEl = document.getElementById('low-hp-overlay');
+let lowHpInterval = null;
 
 // ---------- currency: earned per kill and per wave clear, persists across runs ----------
 const GOLD_STORAGE_KEY = 'waveShooterGold';
@@ -1474,11 +1639,20 @@ function updateHUD() {
   waveValEl.textContent = wave;
   goldValEl.textContent = money;
   menuGoldValEl.textContent = money;
-  lowHpEl.classList.toggle('active', pct > 0 && pct <= 30);
+  const isLow = pct > 0 && pct <= 30;
+  lowHpEl.classList.toggle('active', isLow);
+  if (isLow && !lowHpInterval) {
+    sfxHeartbeat();
+    lowHpInterval = setInterval(sfxHeartbeat, 1100); // matches the CSS pulse cycle
+  } else if (!isLow && lowHpInterval) {
+    clearInterval(lowHpInterval);
+    lowHpInterval = null;
+  }
 }
 
 function takeDamage(amount) {
   health -= amount;
+  sfxPlayerHurt();
   hitFlash.style.opacity = 0.5;
   setTimeout(() => (hitFlash.style.opacity = 0), 150);
   if (health <= 0) {
@@ -1555,6 +1729,7 @@ function animate() {
     if (keys['Space'] && playerGrounded) {
       playerVelY = JUMP_SPEED;
       playerGrounded = false;
+      sfxJump();
     }
     playerVelY += GRAVITY * delta;
     playerY += playerVelY * delta;
@@ -1601,6 +1776,7 @@ function animate() {
         ammoState[equippedGunId] = GUN_CATALOG[equippedGunId].magSize;
         cancelReload();
         updateAmmoHUD();
+        sfxReloadDone();
       } else {
         reloadDip = Math.sin((1 - reloadTimer / reloadDuration) * Math.PI); // 0 -> 1 -> 0
       }
@@ -1806,6 +1982,7 @@ function renderShop() {
     if (!owned && money >= def.price) {
       row.querySelector('.equip-badge').addEventListener('click', () => {
         spendMoney(def.price);
+        sfxPurchase();
         ownedGuns.push(def.id);
         saveOwnedGuns();
         renderShop();
