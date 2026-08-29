@@ -294,6 +294,11 @@ camera.position.set(0, 1.7, 0);
 // weapon always draws on top, never poking into/through world geometry.
 const weaponScene = new THREE.Scene();
 const weaponCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 5);
+// the gun/knife/muzzle-fx models are parented to weaponCamera (see below) so
+// they ride along with it; renderer.render() only draws objects it can reach
+// by walking the scene graph it's given, so weaponCamera itself has to be
+// added to weaponScene too, or none of its children ever get traversed/drawn
+weaponScene.add(weaponCamera);
 weaponScene.add(new THREE.AmbientLight(0xffffff, 0.9));
 const weaponLight = new THREE.DirectionalLight(0xffffff, 0.8);
 weaponLight.position.set(0.5, 1, 0.8);
