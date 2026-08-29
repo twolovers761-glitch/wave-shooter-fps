@@ -243,6 +243,40 @@ function sfxHeartbeat() {
   playThump({ freq: 55, freqEnd: 25, duration: 0.22, hold: 0.02, volume: 0.5 });
 }
 
+// ---------- 3D model loading ----------
+// shared GLTFLoader + a small helper: loads a GLB into a given container
+// (scaling/positioning it), caching the parsed scene so re-using the same
+// model elsewhere (e.g. several cover crates) only fetches it once and
+// clones from there on. Declared this early since level-building code
+// (further down) needs it available immediately, not just once the whole
+// module has finished evaluating.
+const gltfLoader = new GLTFLoader();
+const gltfCache = {};
+function loadModelInto(container, url, { scale = 1, position = [0, 0, 0], rotation = [0, 0, 0] } = {}) {
+  const place = (loadedScene) => {
+    loadedScene.scale.setScalar(scale);
+    loadedScene.position.set(...position);
+    loadedScene.rotation.set(...rotation);
+    loadedScene.traverse((child) => {
+      if (child.isMesh) child.castShadow = true;
+    });
+    container.add(loadedScene);
+  };
+  if (gltfCache[url]) {
+    place(gltfCache[url].clone(true));
+    return;
+  }
+  gltfLoader.load(
+    url,
+    (gltf) => {
+      gltfCache[url] = gltf.scene;
+      place(gltf.scene.clone(true));
+    },
+    undefined,
+    (err) => console.error('failed to load model', url, err)
+  );
+}
+
 // ---------- basic setup ----------
 const scene = new THREE.Scene();
 const FOG_COLOR = 0x0d1420;
@@ -303,6 +337,17 @@ const cornerSigns = [
   [-1, 1],
   [-1, -1],
 ];
+
+// Kenney Space Station Kit crates used as cover - w/h/d are each model's
+// own measured footprint/height at scale 1, used to size both the visual
+// model and its matching collision box together instead of guessing
+const COVER_VARIANTS = [
+  { file: 'container.glb', w: 0.575, h: 0.6, d: 0.575 },
+  { file: 'container-wide.glb', w: 0.6, h: 0.7, d: 0.6 },
+  { file: 'container-flat.glb', w: 0.659, h: 0.6, d: 1.091 },
+  { file: 'container-tall.glb', w: 0.6, h: 0.9, d: 0.6 },
+];
+const DECOR_FILES = ['chair.glb', 'table.glb', 'computer.glb'];
 
 // procedural noise texture so the floor/walls aren't flat, solid color
 function makeNoiseTexture(baseColor, noiseColor, size, cell) {
@@ -536,29 +581,41 @@ function buildLevel(themeKey) {
     obstacles.push({ x, z, hx: PLATFORM_SIZE / 2, hz: PLATFORM_SIZE / 2, height: PLATFORM_HEIGHT });
   }
 
-  // small cover: a mix of crates and barrels, scattered but never overlapping
-  const coverMat = new THREE.MeshStandardMaterial({ color: theme.coverColor, roughness: 0.7 });
-  const barrelMat = new THREE.MeshStandardMaterial({ color: theme.barrelColor, roughness: 0.7, metalness: 0.1 });
+  // small cover: Kenney Space Station Kit containers, scattered but never
+  // overlapping. Each variant's own footprint/height (measured, not
+  // guessed) drives both the visual scale and the matching collision box.
   for (let i = 0; i < 12; i++) {
-    const isBarrel = Math.random() < 0.35;
-    const s = 1.0 + Math.random() * 0.6;
-    const spot = pickSpot(s * 0.7, 5);
+    const variant = COVER_VARIANTS[Math.floor(Math.random() * COVER_VARIANTS.length)];
+    const modelScale = 1.7 + Math.random() * 0.9;
+    const footprintRadius = (Math.max(variant.w, variant.d) * modelScale) / 2;
+    const spot = pickSpot(footprintRadius * 0.85, 5);
     if (!spot) continue;
 
-    let mesh;
-    if (isBarrel) {
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.35, s * 0.38, s * 0.9, 10), barrelMat);
-      mesh.position.set(spot.x, (s * 0.9) / 2, spot.z);
-    } else {
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), coverMat);
-      mesh.position.set(spot.x, s / 2, spot.z);
-    }
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    levelGroup.add(mesh);
+    const anchor = new THREE.Group();
+    anchor.position.set(spot.x, 0, spot.z);
+    levelGroup.add(anchor);
+    loadModelInto(anchor, `assets/map/${variant.file}`, { scale: modelScale });
 
-    const height = isBarrel ? s * 0.9 : s;
-    obstacles.push({ x: spot.x, z: spot.z, hx: s / 2, hz: s / 2, height });
+    obstacles.push({
+      x: spot.x,
+      z: spot.z,
+      hx: (variant.w * modelScale) / 2,
+      hz: (variant.d * modelScale) / 2,
+      height: variant.h * modelScale,
+    });
+  }
+
+  // purely decorative set dressing (not collidable) for extra visual
+  // richness - a chair/table/computer here and there
+  for (let i = 0; i < 6; i++) {
+    const file = DECOR_FILES[Math.floor(Math.random() * DECOR_FILES.length)];
+    const spot = pickSpot(0.6, 5);
+    if (!spot) continue;
+    const anchor = new THREE.Group();
+    anchor.position.set(spot.x, 0, spot.z);
+    anchor.rotation.y = Math.random() * Math.PI * 2;
+    levelGroup.add(anchor);
+    loadModelInto(anchor, `assets/map/${file}`, { scale: 1.8 });
   }
 
   // glowing corner pillars as landmarks so the arena doesn't feel featureless
@@ -647,33 +704,6 @@ buildLevel(selectedLevelKey);
 // code nudges; each gun gets its own "anchor" group with a fixed resting
 // offset that exists immediately, so the rest of the game can wire up
 // visibility/animation before its GLB model has actually finished loading.
-const gltfLoader = new GLTFLoader();
-const gltfCache = {};
-function loadModelInto(container, url, { scale = 1, position = [0, 0, 0], rotation = [0, 0, 0] } = {}) {
-  const place = (scene) => {
-    scene.scale.setScalar(scale);
-    scene.position.set(...position);
-    scene.rotation.set(...rotation);
-    scene.traverse((child) => {
-      if (child.isMesh) child.castShadow = true;
-    });
-    container.add(scene);
-  };
-  if (gltfCache[url]) {
-    place(gltfCache[url].clone(true));
-    return;
-  }
-  gltfLoader.load(
-    url,
-    (gltf) => {
-      gltfCache[url] = gltf.scene;
-      place(gltf.scene.clone(true));
-    },
-    undefined,
-    (err) => console.error('failed to load model', url, err)
-  );
-}
-
 const GUN_MODEL_SCALE = 0.35;
 
 const gunGroup = new THREE.Group();
@@ -2292,19 +2322,3 @@ applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();
-
-window.__debug = {
-  camera,
-  gunGroup,
-  gunModel,
-  rifleModel,
-  shotgunModel,
-  burstModel,
-  sniperModel,
-  THREE,
-  scene,
-  enemies,
-  ENEMY_TYPES,
-  spawnEnemy,
-  buildEnemyMesh,
-};
