@@ -761,59 +761,85 @@ sniperModel.position.set(0.2, -0.11, -0.32);
 sniperModel.visible = false;
 gunGroup.add(sniperModel);
 loadModelInto(sniperModel, 'assets/guns/blaster-o.glb', { scale: GUN_MODEL_SCALE });
+// scope-large-a and silencer-larger both have their own pivot offset from
+// their mesh (like blaster-e's off-center pivot) - naive placement left the
+// scope floating with a gap above the rail and the silencer floating nearly
+// half a unit ahead of the barrel with a big visible gap, disconnected from
+// the rest of the gun. Both offsets below were measured (bounding-box
+// comparison against blaster-o's own body) so each sits flush against it.
 loadModelInto(sniperModel, 'assets/guns/scope-large-a.glb', {
   scale: GUN_MODEL_SCALE,
-  position: [0, 0.09, -0.04],
+  position: [0, 0.063, -0.04],
 });
 loadModelInto(sniperModel, 'assets/guns/silencer-larger.glb', {
   scale: GUN_MODEL_SCALE,
-  position: [0, 0.01, -0.5],
+  position: [0, 0.01, -0.068],
 });
 
 // a simple stylized hand+sleeve (primitives, no hand asset in the kit) so
-// the weapon doesn't look like it's floating in mid-air on its own
+// the weapon doesn't look like it's floating in mid-air on its own. Built
+// from capsules for the fingers/thumb (rounded, with a proximal+distal
+// segment each so they read as curled around a grip) and a stretched sphere
+// for the palm instead of flat boxes, which looked too blocky to pass as a
+// hand up close.
 function buildHand() {
   const group = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.75 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.7 });
   const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x262b33, roughness: 0.85 });
 
-  // kept compact and close to the group origin (nothing reaching far in any
-  // direction) so it can't end up behind the camera or outside the frustum
-  // regardless of exactly where the hand group gets placed
-  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.054, 0.09, 8), sleeveMat);
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.054, 0.09, 10), sleeveMat);
   cuff.rotation.z = Math.PI / 2.2;
   cuff.position.set(0.05, -0.02, 0.02);
   group.add(cuff);
 
-  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.04, 0.05, 8), skinMat);
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 0.05, 10), skinMat);
   wrist.rotation.z = Math.PI / 2.2;
   wrist.position.set(0.01, -0.01, 0);
   group.add(wrist);
 
-  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.045, 0.08), skinMat);
-  palm.position.set(-0.01, 0, -0.03);
-  palm.rotation.y = 0.15;
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.042, 10, 8), skinMat);
+  palm.scale.set(1.15, 0.8, 1.3);
+  palm.position.set(-0.015, -0.002, -0.028);
   group.add(palm);
 
-  const fingerGeo = new THREE.BoxGeometry(0.016, 0.02, 0.065);
+  // each finger is two capsule segments (knuckle + tip) bent to curl around
+  // a grip, rather than one straight box
+  const fingerBaseX = -0.05;
+  const fingerSpacing = 0.019;
   for (let i = 0; i < 4; i++) {
-    const finger = new THREE.Mesh(fingerGeo, skinMat);
-    finger.position.set(-0.04 + i * 0.019, 0.026, -0.06);
-    finger.rotation.x = -0.35;
-    group.add(finger);
+    const fx = fingerBaseX + i * fingerSpacing;
+    const proximal = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.032, 3, 6), skinMat);
+    proximal.position.set(fx, 0.02, -0.058);
+    proximal.rotation.x = -0.55;
+    group.add(proximal);
+    const distal = new THREE.Mesh(new THREE.CapsuleGeometry(0.0075, 0.024, 3, 6), skinMat);
+    distal.position.set(fx, -0.004, -0.078);
+    distal.rotation.x = -1.5;
+    group.add(distal);
   }
 
-  const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.017, 0.045), skinMat);
-  thumb.position.set(-0.045, -0.012, -0.015);
-  thumb.rotation.z = 0.9;
-  group.add(thumb);
+  const thumbBase = new THREE.Mesh(new THREE.CapsuleGeometry(0.01, 0.026, 3, 6), skinMat);
+  thumbBase.position.set(-0.048, -0.008, -0.01);
+  thumbBase.rotation.z = 1.0;
+  thumbBase.rotation.y = 0.3;
+  group.add(thumbBase);
+  const thumbTip = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.02, 3, 6), skinMat);
+  thumbTip.position.set(-0.062, -0.02, -0.03);
+  thumbTip.rotation.z = 1.3;
+  thumbTip.rotation.y = 0.3;
+  group.add(thumbTip);
 
   return group;
 }
 
 const gunHand = buildHand();
-gunHand.position.set(0.14, -0.15, -0.24);
-gunHand.rotation.y = -0.35;
+// grips from underneath the gun rather than sitting in front of it - it used
+// to sit almost directly between the camera and the barrel (same x/y as the
+// gun, just closer), which eclipsed the whole barrel for the longer guns
+// (the sniper especially, since its silencer was invisible behind the hand)
+gunHand.position.set(0.17, -0.24, -0.27);
+gunHand.rotation.y = -0.3;
+gunHand.rotation.x = 0.15;
 gunGroup.add(gunHand);
 
 // parented to weaponCamera (not weaponScene) so it rides along with the
