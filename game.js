@@ -709,30 +709,34 @@ const GUN_MODEL_SCALE = 0.35;
 const gunGroup = new THREE.Group();
 
 const gunModel = new THREE.Group();
-gunModel.position.set(0.28, -0.24, -0.4);
+gunModel.position.set(0.26, -0.13, -0.55);
 gunGroup.add(gunModel);
 loadModelInto(gunModel, 'assets/guns/blaster-a.glb', { scale: GUN_MODEL_SCALE });
 
 const rifleModel = new THREE.Group();
-rifleModel.position.set(0.27, -0.24, -0.36);
+rifleModel.position.set(0.25, -0.13, -0.55);
 rifleModel.visible = false;
 gunGroup.add(rifleModel);
-loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE });
+// blaster-e's own pivot sits far toward its front/muzzle end (unlike the
+// other blasters, which are centered on themselves) - without this offset
+// most of its body sits almost on top of the camera, inside the near clip
+// plane, and only the muzzle survives clipping
+loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE, position: [0, 0, -0.38] });
 
 const shotgunModel = new THREE.Group();
-shotgunModel.position.set(0.27, -0.24, -0.36);
+shotgunModel.position.set(0.25, -0.13, -0.55);
 shotgunModel.visible = false;
 gunGroup.add(shotgunModel);
-loadModelInto(shotgunModel, 'assets/guns/blaster-f.glb', { scale: GUN_MODEL_SCALE });
+loadModelInto(shotgunModel, 'assets/guns/blaster-p.glb', { scale: GUN_MODEL_SCALE });
 
 const burstModel = new THREE.Group();
-burstModel.position.set(0.27, -0.24, -0.36);
+burstModel.position.set(0.25, -0.13, -0.55);
 burstModel.visible = false;
 gunGroup.add(burstModel);
 loadModelInto(burstModel, 'assets/guns/blaster-j.glb', { scale: GUN_MODEL_SCALE * 1.45 }); // blaster-j is modeled smaller than the others
 
 const sniperModel = new THREE.Group();
-sniperModel.position.set(0.27, -0.24, -0.36);
+sniperModel.position.set(0.25, -0.13, -0.55);
 sniperModel.visible = false;
 gunGroup.add(sniperModel);
 loadModelInto(sniperModel, 'assets/guns/blaster-o.glb', { scale: GUN_MODEL_SCALE });
@@ -1016,7 +1020,7 @@ const GUN_CATALOG = {
     cooldown: 0.18,
     magSize: 10,
     reloadTime: 1.0,
-    muzzle: { x: 0.28, y: -0.234, z: -0.53 },
+    muzzle: { x: 0.26, y: -0.106, z: -0.68 },
   },
   rifle: {
     id: 'rifle',
@@ -1027,7 +1031,7 @@ const GUN_CATALOG = {
     cooldown: 0.1,
     magSize: 25,
     reloadTime: 1.6,
-    muzzle: { x: 0.254, y: -0.216, z: -0.36 },
+    muzzle: { x: 0.25, y: -0.094, z: -0.93 },
   },
   shotgun: {
     id: 'shotgun',
@@ -1041,7 +1045,7 @@ const GUN_CATALOG = {
     cooldown: 0.75,
     magSize: 6,
     reloadTime: 2.2,
-    muzzle: { x: 0.27, y: -0.209, z: -0.589 },
+    muzzle: { x: 0.25, y: -0.095, z: -0.701 },
   },
   burst: {
     id: 'burst',
@@ -1055,7 +1059,7 @@ const GUN_CATALOG = {
     cooldown: 0.55, // cooldown starts once the whole burst is triggered
     magSize: 21, // 7 bursts per magazine
     reloadTime: 1.8,
-    muzzle: { x: 0.27, y: -0.201, z: -0.515 },
+    muzzle: { x: 0.25, y: -0.067, z: -0.705 },
   },
   sniper: {
     id: 'sniper',
@@ -1068,7 +1072,7 @@ const GUN_CATALOG = {
     zoomFov: 25, // FOV while aiming down the scope (right-click)
     magSize: 5,
     reloadTime: 2.4,
-    muzzle: { x: 0.27, y: -0.167, z: -0.96 },
+    muzzle: { x: 0.25, y: -0.032, z: -1.149 },
   },
 };
 const gunModelsById = {
@@ -1596,7 +1600,12 @@ fbxLoader.load(
   'assets/enemy/run.fbx',
   (anim) => {
     enemyTemplate = enemyTemplate || {};
-    enemyTemplate.runClip = anim.animations[0];
+    // run.fbx actually contains two clips - a real ~0.67s "Run" cycle and a
+    // throwaway single-frame "Targeting Pose". Picking by index grabbed
+    // whichever came first, which was the frozen one-frame pose - hence
+    // enemies looked stuck instead of running. Match by name instead.
+    enemyTemplate.runClip =
+      anim.animations.find((a) => /run/i.test(a.name)) || anim.animations[anim.animations.length - 1];
     tryResolveEnemyTemplate();
   },
   undefined,
