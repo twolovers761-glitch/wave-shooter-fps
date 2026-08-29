@@ -10,11 +10,28 @@ const masterGain = audioCtx.createGain();
 masterGain.gain.value = 0.7;
 masterGain.connect(audioCtx.destination);
 
+// a soft-clip saturation stage that impact sounds route through for a
+// grittier, heavier character - clean UI sounds skip it and go straight
+// to masterGain
+function makeDistortionCurve(amount) {
+  const n = 44100;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+const grit = audioCtx.createWaveShaper();
+grit.curve = makeDistortionCurve(28);
+grit.oversample = '4x';
+grit.connect(masterGain);
+
 function unlockAudio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-function playTone({ freq = 440, freqEnd = null, duration = 0.1, type = 'sine', volume = 0.3, delay = 0 }) {
+function playTone({ freq = 440, freqEnd = null, duration = 0.1, type = 'sine', volume = 0.3, delay = 0, bus = masterGain }) {
   const t0 = audioCtx.currentTime + delay;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -23,12 +40,12 @@ function playTone({ freq = 440, freqEnd = null, duration = 0.1, type = 'sine', v
   if (freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), t0 + duration);
   gain.gain.setValueAtTime(volume, t0);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
-  osc.connect(gain).connect(masterGain);
+  osc.connect(gain).connect(bus);
   osc.start(t0);
   osc.stop(t0 + duration + 0.02);
 }
 
-function playNoise({ duration = 0.15, volume = 0.3, filterFreq = 1200, delay = 0 }) {
+function playNoise({ duration = 0.15, volume = 0.3, filterFreq = 1200, delay = 0, bus = masterGain }) {
   const t0 = audioCtx.currentTime + delay;
   const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -42,31 +59,54 @@ function playNoise({ duration = 0.15, volume = 0.3, filterFreq = 1200, delay = 0
   const gain = audioCtx.createGain();
   gain.gain.setValueAtTime(volume, t0);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
-  noise.connect(filter).connect(gain).connect(masterGain);
+  noise.connect(filter).connect(gain).connect(bus);
   noise.start(t0);
   noise.stop(t0 + duration + 0.02);
 }
 
+// a punchy sub-bass "thump" - fast attack then a quick decay - this is what
+// makes impacts read as heavy/weighty rather than a thin beep
+function playThump({ freq = 60, freqEnd = 25, duration = 0.18, volume = 0.5, delay = 0, bus = masterGain }) {
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), t0 + duration);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+  osc.connect(gain).connect(bus);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.02);
+}
+
 const GUN_SHOT_SFX = {
   pistol: () => {
-    playTone({ freq: 180, freqEnd: 80, duration: 0.09, type: 'square', volume: 0.35 });
-    playNoise({ duration: 0.05, volume: 0.25, filterFreq: 2500 });
+    playThump({ freq: 75, freqEnd: 32, duration: 0.11, volume: 0.4 });
+    playTone({ freq: 170, freqEnd: 65, duration: 0.08, type: 'square', volume: 0.28, bus: grit });
+    playNoise({ duration: 0.06, volume: 0.22, filterFreq: 2200, bus: grit });
   },
   rifle: () => {
-    playTone({ freq: 150, freqEnd: 70, duration: 0.07, type: 'square', volume: 0.3 });
-    playNoise({ duration: 0.05, volume: 0.28, filterFreq: 3000 });
+    playThump({ freq: 80, freqEnd: 35, duration: 0.09, volume: 0.35 });
+    playTone({ freq: 150, freqEnd: 60, duration: 0.06, type: 'square', volume: 0.26, bus: grit });
+    playNoise({ duration: 0.05, volume: 0.24, filterFreq: 2600, bus: grit });
   },
   shotgun: () => {
-    playNoise({ duration: 0.22, volume: 0.45, filterFreq: 900 });
-    playTone({ freq: 90, freqEnd: 40, duration: 0.18, type: 'sawtooth', volume: 0.3 });
+    playThump({ freq: 50, freqEnd: 22, duration: 0.32, volume: 0.65 });
+    playNoise({ duration: 0.3, volume: 0.5, filterFreq: 650, bus: grit });
+    playTone({ freq: 85, freqEnd: 32, duration: 0.24, type: 'sawtooth', volume: 0.35, bus: grit });
   },
   burst: () => {
-    playTone({ freq: 160, freqEnd: 75, duration: 0.06, type: 'square', volume: 0.28 });
-    playNoise({ duration: 0.04, volume: 0.22, filterFreq: 2800 });
+    playThump({ freq: 78, freqEnd: 34, duration: 0.08, volume: 0.32 });
+    playTone({ freq: 160, freqEnd: 65, duration: 0.055, type: 'square', volume: 0.24, bus: grit });
+    playNoise({ duration: 0.04, volume: 0.2, filterFreq: 2600, bus: grit });
   },
   sniper: () => {
-    playTone({ freq: 70, freqEnd: 28, duration: 0.35, type: 'sawtooth', volume: 0.5 });
-    playNoise({ duration: 0.3, volume: 0.35, filterFreq: 600 });
+    playThump({ freq: 42, freqEnd: 18, duration: 0.48, volume: 0.75 });
+    playTone({ freq: 65, freqEnd: 24, duration: 0.4, type: 'sawtooth', volume: 0.45, bus: grit });
+    playNoise({ duration: 0.35, volume: 0.4, filterFreq: 500, bus: grit });
+    playNoise({ duration: 0.25, volume: 0.15, filterFreq: 350, delay: 0.09, bus: grit }); // trailing crack/echo
   },
 };
 
@@ -78,31 +118,38 @@ function sfxEmptyClick() {
 }
 function sfxReloadStart() {
   playTone({ freq: 320, duration: 0.05, type: 'square', volume: 0.15 });
+  playNoise({ duration: 0.04, volume: 0.12, filterFreq: 2000 });
 }
 function sfxReloadDone() {
   playTone({ freq: 520, duration: 0.06, type: 'square', volume: 0.2 });
   playTone({ freq: 740, duration: 0.08, type: 'square', volume: 0.2, delay: 0.07 });
+  playNoise({ duration: 0.05, volume: 0.15, filterFreq: 3000, delay: 0.07 });
 }
 function sfxKnifeSwing() {
   playNoise({ duration: 0.12, volume: 0.2, filterFreq: 4000 });
 }
 function sfxHit() {
-  playTone({ freq: 220, duration: 0.06, type: 'triangle', volume: 0.2 });
+  playThump({ freq: 140, freqEnd: 55, duration: 0.09, volume: 0.3 });
+  playTone({ freq: 220, duration: 0.05, type: 'triangle', volume: 0.15, bus: grit });
 }
 function sfxCrit() {
+  playThump({ freq: 160, freqEnd: 60, duration: 0.1, volume: 0.35 });
   playTone({ freq: 520, freqEnd: 900, duration: 0.12, type: 'square', volume: 0.3 });
 }
 function sfxEnemyDeath() {
-  playNoise({ duration: 0.18, volume: 0.25, filterFreq: 800 });
-  playTone({ freq: 150, freqEnd: 40, duration: 0.2, type: 'sawtooth', volume: 0.2 });
+  playThump({ freq: 95, freqEnd: 32, duration: 0.22, volume: 0.4 });
+  playNoise({ duration: 0.18, volume: 0.25, filterFreq: 800, bus: grit });
+  playTone({ freq: 150, freqEnd: 40, duration: 0.2, type: 'sawtooth', volume: 0.2, bus: grit });
 }
 function sfxPlayerHurt() {
-  playTone({ freq: 120, freqEnd: 55, duration: 0.15, type: 'sawtooth', volume: 0.3 });
+  playThump({ freq: 65, freqEnd: 25, duration: 0.22, volume: 0.45 });
+  playTone({ freq: 120, freqEnd: 50, duration: 0.15, type: 'sawtooth', volume: 0.25, bus: grit });
 }
 function sfxJump() {
   playTone({ freq: 300, freqEnd: 520, duration: 0.1, type: 'sine', volume: 0.15 });
 }
 function sfxWaveStart() {
+  playThump({ freq: 55, freqEnd: 28, duration: 0.28, volume: 0.35 });
   playTone({ freq: 440, duration: 0.12, type: 'triangle', volume: 0.25 });
   playTone({ freq: 660, duration: 0.15, type: 'triangle', volume: 0.25, delay: 0.12 });
 }
@@ -114,7 +161,7 @@ function sfxPurchase() {
   playTone({ freq: 750, duration: 0.1, type: 'triangle', volume: 0.2, delay: 0.08 });
 }
 function sfxHeartbeat() {
-  playTone({ freq: 55, duration: 0.12, type: 'sine', volume: 0.4 });
+  playThump({ freq: 52, freqEnd: 28, duration: 0.16, volume: 0.45 });
 }
 
 // ---------- basic setup ----------
