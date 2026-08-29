@@ -266,43 +266,13 @@ const hitFlash = document.createElement('div');
 hitFlash.id = 'hit-flash';
 document.body.appendChild(hitFlash);
 
-// ---------- sky ----------
-const skyGeo = new THREE.SphereGeometry(180, 24, 16);
-const skyMat = new THREE.ShaderMaterial({
-  side: THREE.BackSide,
-  depthWrite: false,
-  uniforms: {
-    topColor: { value: new THREE.Color(0x142238) },
-    bottomColor: { value: new THREE.Color(0x0d1420) },
-    glowColor: { value: new THREE.Color(0x2d5a7a) },
-  },
-  vertexShader: `
-    varying vec3 vWorldPos;
-    void main() {
-      vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    varying vec3 vWorldPos;
-    uniform vec3 topColor;
-    uniform vec3 bottomColor;
-    uniform vec3 glowColor;
-    void main() {
-      float h = normalize(vWorldPos).y;
-      vec3 col = mix(bottomColor, topColor, smoothstep(-0.1, 0.6, h));
-      float horizonGlow = 1.0 - smoothstep(0.0, 0.35, abs(h));
-      col += glowColor * horizonGlow * 0.35;
-      gl_FragColor = vec4(col, 1.0);
-    }
-  `,
-});
-const sky = new THREE.Mesh(skyGeo, skyMat);
-scene.add(sky);
-
 // ---------- lighting ----------
-scene.add(new THREE.AmbientLight(0x5a72a0, 0.55));
-scene.add(new THREE.HemisphereLight(0x3f6e8f, 0x14171f, 0.5));
+// colors get retinted per level theme; the light objects themselves are
+// created once and reused
+const ambientLight = new THREE.AmbientLight(0x5a72a0, 0.55);
+scene.add(ambientLight);
+const hemiLight = new THREE.HemisphereLight(0x3f6e8f, 0x14171f, 0.5);
+scene.add(hemiLight);
 const dirLight = new THREE.DirectionalLight(0xfff0d8, 1.25);
 dirLight.position.set(10, 20, 8);
 dirLight.castShadow = true;
@@ -315,6 +285,21 @@ scene.add(dirLight);
 
 // ---------- arena ----------
 const ARENA_SIZE = 30;
+const wallHeight = 6;
+const PLATFORM_SIZE = 3.6;
+const PLATFORM_HEIGHT = 1.5;
+const platformSpots = [
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+const cornerSigns = [
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
 
 // procedural noise texture so the floor/walls aren't flat, solid color
 function makeNoiseTexture(baseColor, noiseColor, size, cell) {
@@ -338,48 +323,65 @@ function makeNoiseTexture(baseColor, noiseColor, size, cell) {
   return tex;
 }
 
-const groundTex = makeNoiseTexture('#262e3c', '#3a4658', 256, 8);
-groundTex.repeat.set(ARENA_SIZE, ARENA_SIZE);
-const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95 });
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_SIZE * 2, ARENA_SIZE * 2), groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+// ---------- level themes ----------
+// each level is the same layout logic (walls, platforms, cover, corner
+// pillars) recolored/retextured - swapping levels rebuilds this group
+// rather than needing separate geometry per level
+const LEVEL_THEMES = {
+  hangar: {
+    name: '격납고',
+    fogColor: 0x0d1420,
+    skyTop: 0x142238,
+    skyBottom: 0x0d1420,
+    skyGlow: 0x2d5a7a,
+    groundBase: '#262e3c',
+    groundNoise: '#3a4658',
+    wallBase: '#333f52',
+    wallNoise: '#455872',
+    coverColor: 0x4a5568,
+    barrelColor: 0x5c4a34,
+    platformColor: 0x384252,
+    pillarColor: 0x2b3242,
+    trimColor: 0x4dd8ff,
+    trimEmissive: 0x1f8fbd,
+  },
+  desert: {
+    name: '사막 유적',
+    fogColor: 0x2a1d10,
+    skyTop: 0x4a3018,
+    skyBottom: 0x2a1d10,
+    skyGlow: 0xd98f3d,
+    groundBase: '#4a3a24',
+    groundNoise: '#63512f',
+    wallBase: '#6b5636',
+    wallNoise: '#82683f',
+    coverColor: 0x8a7452,
+    barrelColor: 0x6b5030,
+    platformColor: 0x7a6440,
+    pillarColor: 0x5c4a2e,
+    trimColor: 0xffb648,
+    trimEmissive: 0x8a5a1f,
+  },
+  toxic: {
+    name: '독성 폐허',
+    fogColor: 0x121c14,
+    skyTop: 0x1c2e1a,
+    skyBottom: 0x0e150e,
+    skyGlow: 0x5fbf3d,
+    groundBase: '#1e2a1c',
+    groundNoise: '#2c3e28',
+    wallBase: '#2a3428',
+    wallNoise: '#3c4c34',
+    coverColor: 0x445540,
+    barrelColor: 0x3d5c2e,
+    platformColor: 0x37452f,
+    pillarColor: 0x28331f,
+    trimColor: 0x7dff5a,
+    trimEmissive: 0x2f8a1a,
+  },
+};
 
-// faint grid lines for movement/scale reference
-const grid = new THREE.GridHelper(ARENA_SIZE * 2, 30, 0x4d7ea8, 0x1c222c);
-grid.material.transparent = true;
-grid.material.opacity = 0.25;
-grid.position.y = 0.02;
-scene.add(grid);
-
-const wallTex = makeNoiseTexture('#333f52', '#455872', 256, 16);
-wallTex.repeat.set(ARENA_SIZE / 2, 1.5);
-const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.85 });
-const wallHeight = 6;
-const trimMat = new THREE.MeshStandardMaterial({
-  color: 0x4dd8ff,
-  emissive: 0x1f8fbd,
-  emissiveIntensity: 1.4,
-  roughness: 0.4,
-});
-function makeWall(w, d, x, z) {
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMat);
-  wall.position.set(x, wallHeight / 2, z);
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  scene.add(wall);
-
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.08, d * 0.98), trimMat);
-  trim.position.set(x, 0.35, z);
-  scene.add(trim);
-}
-makeWall(ARENA_SIZE * 2, 1, 0, -ARENA_SIZE);
-makeWall(ARENA_SIZE * 2, 1, 0, ARENA_SIZE);
-makeWall(1, ARENA_SIZE * 2, -ARENA_SIZE, 0);
-makeWall(1, ARENA_SIZE * 2, ARENA_SIZE, 0);
-
-// ---------- arena layout: cover, platforms, corner landmarks ----------
+// arena layout state shared with the rest of the game (collision, spawning)
 const obstacles = [];
 const footprints = []; // {x, z, r} of everything placed so far, for spacing checks
 
@@ -406,85 +408,179 @@ function pickSpot(radius, minSpawnDist, maxTries = 30) {
   return null;
 }
 
-// four raised combat platforms, one per quadrant, for real high-ground fights
-const platformMat = new THREE.MeshStandardMaterial({ color: 0x384252, roughness: 0.75 });
-const PLATFORM_SIZE = 3.6;
-const PLATFORM_HEIGHT = 1.5;
-const platformSpots = [
-  [1, 1],
-  [1, -1],
-  [-1, 1],
-  [-1, -1],
-];
-for (const [sx, sz] of platformSpots) {
-  const x = sx * 11;
-  const z = sz * 11;
-  footprints.push({ x, z, r: PLATFORM_SIZE * 0.75 });
-
-  const plat = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE, PLATFORM_HEIGHT, PLATFORM_SIZE), platformMat);
-  plat.position.set(x, PLATFORM_HEIGHT / 2, z);
-  plat.castShadow = true;
-  plat.receiveShadow = true;
-  scene.add(plat);
-
-  const platTrim = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE * 0.97, 0.05, PLATFORM_SIZE * 0.97), trimMat);
-  platTrim.position.set(x, PLATFORM_HEIGHT + 0.03, z);
-  scene.add(platTrim);
-
-  obstacles.push({ x, z, hx: PLATFORM_SIZE / 2, hz: PLATFORM_SIZE / 2, height: PLATFORM_HEIGHT });
+function disposeObject3D(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.geometry.dispose();
+    if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+    else if (child.material) child.material.dispose();
+  });
 }
 
-// small cover: a mix of crates and barrels, scattered but never overlapping
-const coverMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.7 });
-const barrelMat = new THREE.MeshStandardMaterial({ color: 0x5c4a34, roughness: 0.7, metalness: 0.1 });
-for (let i = 0; i < 12; i++) {
-  const isBarrel = Math.random() < 0.35;
-  const s = 1.0 + Math.random() * 0.6;
-  const spot = pickSpot(s * 0.7, 5);
-  if (!spot) continue;
+let levelGroup = new THREE.Group();
+scene.add(levelGroup);
+let currentLevelKey = 'hangar';
 
-  let mesh;
-  if (isBarrel) {
-    mesh = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.35, s * 0.38, s * 0.9, 10), barrelMat);
-    mesh.position.set(spot.x, (s * 0.9) / 2, spot.z);
-  } else {
-    mesh = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), coverMat);
-    mesh.position.set(spot.x, s / 2, spot.z);
+function buildLevel(themeKey) {
+  const theme = LEVEL_THEMES[themeKey] || LEVEL_THEMES.hangar;
+  currentLevelKey = LEVEL_THEMES[themeKey] ? themeKey : 'hangar';
+
+  // tear down the previous level's geometry before building the new one
+  scene.remove(levelGroup);
+  disposeObject3D(levelGroup);
+  levelGroup = new THREE.Group();
+  obstacles.length = 0;
+  footprints.length = 0;
+
+  scene.background = new THREE.Color(theme.fogColor);
+  scene.fog.color.set(theme.fogColor);
+  ambientLight.color.set(theme.skyGlow);
+  hemiLight.color.set(theme.skyTop);
+  hemiLight.groundColor.set(theme.fogColor);
+  dustMat.color.set(theme.trimColor);
+
+  // sky
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(theme.skyTop) },
+      bottomColor: { value: new THREE.Color(theme.skyBottom) },
+      glowColor: { value: new THREE.Color(theme.skyGlow) },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main() {
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorldPos;
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      uniform vec3 glowColor;
+      void main() {
+        float h = normalize(vWorldPos).y;
+        vec3 col = mix(bottomColor, topColor, smoothstep(-0.1, 0.6, h));
+        float horizonGlow = 1.0 - smoothstep(0.0, 0.35, abs(h));
+        col += glowColor * horizonGlow * 0.35;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  });
+  levelGroup.add(new THREE.Mesh(new THREE.SphereGeometry(180, 24, 16), skyMat));
+
+  // ground
+  const groundTex = makeNoiseTexture(theme.groundBase, theme.groundNoise, 256, 8);
+  groundTex.repeat.set(ARENA_SIZE, ARENA_SIZE);
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_SIZE * 2, ARENA_SIZE * 2), groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  levelGroup.add(ground);
+
+  // faint grid lines for movement/scale reference
+  const grid = new THREE.GridHelper(ARENA_SIZE * 2, 30, theme.trimColor, theme.fogColor);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.25;
+  grid.position.y = 0.02;
+  levelGroup.add(grid);
+
+  // walls
+  const wallTex = makeNoiseTexture(theme.wallBase, theme.wallNoise, 256, 16);
+  wallTex.repeat.set(ARENA_SIZE / 2, 1.5);
+  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.85 });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: theme.trimColor,
+    emissive: theme.trimEmissive,
+    emissiveIntensity: 1.4,
+    roughness: 0.4,
+  });
+  function makeWall(w, d, x, z) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMat);
+    wall.position.set(x, wallHeight / 2, z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    levelGroup.add(wall);
+
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.08, d * 0.98), trimMat);
+    trim.position.set(x, 0.35, z);
+    levelGroup.add(trim);
   }
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  makeWall(ARENA_SIZE * 2, 1, 0, -ARENA_SIZE);
+  makeWall(ARENA_SIZE * 2, 1, 0, ARENA_SIZE);
+  makeWall(1, ARENA_SIZE * 2, -ARENA_SIZE, 0);
+  makeWall(1, ARENA_SIZE * 2, ARENA_SIZE, 0);
 
-  const height = isBarrel ? s * 0.9 : s;
-  obstacles.push({ x: spot.x, z: spot.z, hx: s / 2, hz: s / 2, height });
-}
+  // four raised combat platforms, one per quadrant, for real high-ground fights
+  const platformMat = new THREE.MeshStandardMaterial({ color: theme.platformColor, roughness: 0.75 });
+  for (const [sx, sz] of platformSpots) {
+    const x = sx * 11;
+    const z = sz * 11;
+    footprints.push({ x, z, r: PLATFORM_SIZE * 0.75 });
 
-// glowing corner pillars as landmarks so the arena doesn't feel featureless
-const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2b3242, roughness: 0.6 });
-const cornerSigns = [
-  [1, 1],
-  [1, -1],
-  [-1, 1],
-  [-1, -1],
-];
-for (const [sx, sz] of cornerSigns) {
-  const x = sx * (ARENA_SIZE - 2);
-  const z = sz * (ARENA_SIZE - 2);
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE, PLATFORM_HEIGHT, PLATFORM_SIZE), platformMat);
+    plat.position.set(x, PLATFORM_HEIGHT / 2, z);
+    plat.castShadow = true;
+    plat.receiveShadow = true;
+    levelGroup.add(plat);
 
-  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 5, 8), pillarMat);
-  pillar.position.set(x, 2.5, z);
-  pillar.castShadow = true;
-  scene.add(pillar);
+    const platTrim = new THREE.Mesh(new THREE.BoxGeometry(PLATFORM_SIZE * 0.97, 0.05, PLATFORM_SIZE * 0.97), trimMat);
+    platTrim.position.set(x, PLATFORM_HEIGHT + 0.03, z);
+    levelGroup.add(platTrim);
 
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), trimMat);
-  cap.position.set(x, 5.05, z);
-  scene.add(cap);
+    obstacles.push({ x, z, hx: PLATFORM_SIZE / 2, hz: PLATFORM_SIZE / 2, height: PLATFORM_HEIGHT });
+  }
 
-  const cornerLight = new THREE.PointLight(0x4dd8ff, 1.1, 14);
-  cornerLight.position.set(x, 4.6, z);
-  scene.add(cornerLight);
+  // small cover: a mix of crates and barrels, scattered but never overlapping
+  const coverMat = new THREE.MeshStandardMaterial({ color: theme.coverColor, roughness: 0.7 });
+  const barrelMat = new THREE.MeshStandardMaterial({ color: theme.barrelColor, roughness: 0.7, metalness: 0.1 });
+  for (let i = 0; i < 12; i++) {
+    const isBarrel = Math.random() < 0.35;
+    const s = 1.0 + Math.random() * 0.6;
+    const spot = pickSpot(s * 0.7, 5);
+    if (!spot) continue;
 
-  obstacles.push({ x, z, hx: 0.4, hz: 0.4, height: 5 });
+    let mesh;
+    if (isBarrel) {
+      mesh = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.35, s * 0.38, s * 0.9, 10), barrelMat);
+      mesh.position.set(spot.x, (s * 0.9) / 2, spot.z);
+    } else {
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), coverMat);
+      mesh.position.set(spot.x, s / 2, spot.z);
+    }
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    levelGroup.add(mesh);
+
+    const height = isBarrel ? s * 0.9 : s;
+    obstacles.push({ x: spot.x, z: spot.z, hx: s / 2, hz: s / 2, height });
+  }
+
+  // glowing corner pillars as landmarks so the arena doesn't feel featureless
+  const pillarMat = new THREE.MeshStandardMaterial({ color: theme.pillarColor, roughness: 0.6 });
+  for (const [sx, sz] of cornerSigns) {
+    const x = sx * (ARENA_SIZE - 2);
+    const z = sz * (ARENA_SIZE - 2);
+
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 5, 8), pillarMat);
+    pillar.position.set(x, 2.5, z);
+    pillar.castShadow = true;
+    levelGroup.add(pillar);
+
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), trimMat);
+    cap.position.set(x, 5.05, z);
+    levelGroup.add(cap);
+
+    const cornerLight = new THREE.PointLight(theme.trimColor, 1.1, 14);
+    cornerLight.position.set(x, 4.6, z);
+    levelGroup.add(cornerLight);
+
+    obstacles.push({ x, z, hx: 0.4, hz: 0.4, height: 5 });
+  }
+
+  scene.add(levelGroup);
 }
 
 // ---------- ambient dust ----------
@@ -522,6 +618,26 @@ const dustMat = new THREE.PointsMaterial({
 });
 const dust = new THREE.Points(dustGeo, dustMat);
 scene.add(dust);
+
+const LEVEL_KEY = 'waveShooterLevel';
+function loadSelectedLevel() {
+  try {
+    const saved = localStorage.getItem(LEVEL_KEY);
+    if (saved && LEVEL_THEMES[saved]) return saved;
+  } catch (e) {
+    // ignore
+  }
+  return 'hangar';
+}
+function saveSelectedLevel(key) {
+  try {
+    localStorage.setItem(LEVEL_KEY, key);
+  } catch (e) {
+    // ignore - selection still applies for this session
+  }
+}
+let selectedLevelKey = loadSelectedLevel();
+buildLevel(selectedLevelKey);
 
 // ---------- gun view model ----------
 // gunGroup stays at the origin and is what the per-frame bob/recoil code
@@ -931,6 +1047,8 @@ const gameoverScreen = document.getElementById('gameover-screen');
 const startBtn = document.getElementById('start-btn');
 const resumeBtn = document.getElementById('resume-btn');
 const restartBtn = document.getElementById('restart-btn');
+const pauseMenuBtn = document.getElementById('pause-menu-btn');
+const gameoverMenuBtn = document.getElementById('gameover-menu-btn');
 
 startBtn.addEventListener('click', () => controls.lock());
 resumeBtn.addEventListener('click', () => controls.lock());
@@ -939,6 +1057,19 @@ restartBtn.addEventListener('click', () => {
   resetGame();
   controls.lock();
 });
+
+// quitting to the main menu always ends the current run, same as dying -
+// it's the only way back to armory/shop/level select once a game starts
+function backToMenu() {
+  resetGame();
+  gameState = 'menu';
+  pauseScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  showMenuView('main');
+  startScreen.classList.remove('hidden');
+}
+pauseMenuBtn.addEventListener('click', backToMenu);
+gameoverMenuBtn.addEventListener('click', backToMenu);
 
 let needsWaveStart = true;
 
@@ -965,6 +1096,7 @@ function showMenuView(view) {
   menuPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.view !== view));
   if (view === 'armory') renderArmory();
   if (view === 'shop') renderShop();
+  if (view === 'level') renderLevelSelect();
 }
 document.querySelectorAll('#start-screen [data-open]').forEach((btn) => {
   btn.addEventListener('click', () => showMenuView(btn.dataset.open));
@@ -2314,6 +2446,31 @@ function renderShop() {
       });
     }
     shopListEl.appendChild(row);
+  }
+}
+
+const levelListEl = document.getElementById('level-list');
+function renderLevelSelect() {
+  levelListEl.innerHTML = '';
+  for (const [key, theme] of Object.entries(LEVEL_THEMES)) {
+    const isSelected = key === selectedLevelKey;
+    const row = document.createElement('div');
+    row.className = 'armory-item';
+    row.innerHTML = `
+      <div class="info">
+        <div class="name">${theme.name}</div>
+      </div>
+      <div class="equip-badge ${isSelected ? 'equipped' : 'equip-action'}">${isSelected ? '선택됨' : '선택'}</div>
+    `;
+    if (!isSelected) {
+      row.querySelector('.equip-badge').addEventListener('click', () => {
+        selectedLevelKey = key;
+        saveSelectedLevel(key);
+        buildLevel(key);
+        renderLevelSelect();
+      });
+    }
+    levelListEl.appendChild(row);
   }
 }
 
