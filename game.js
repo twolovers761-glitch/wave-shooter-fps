@@ -1692,7 +1692,7 @@ const ENEMY_TYPES = {
     meleeDamage: 7,
     scale: 0.85,
     skin: 'zombieA.png',
-    tint: 0xd7e86a,
+    tint: 0xb9c47e,
     emissive: 0x161600,
     accentColor: 0xd7e86a,
   },
@@ -1703,7 +1703,7 @@ const ENEMY_TYPES = {
     meleeDamage: 22,
     scale: 1.4,
     skin: 'zombieC.png',
-    tint: 0x8a97a8,
+    tint: 0x7d8896,
     emissive: 0x05070a,
     accentColor: 0x8a97a8,
   },
@@ -1714,7 +1714,7 @@ const ENEMY_TYPES = {
     meleeDamage: 6,
     scale: 1,
     skin: 'zombieC.png',
-    tint: 0xcf8aff,
+    tint: 0xb98ae0,
     emissive: 0x1a0a26,
     accentColor: 0xd77bff,
     glowColor: 0xd77bff,
@@ -1740,7 +1740,6 @@ function pickEnemyKind(currentWave) {
 // loaded once and cached; every spawned enemy is a skeleton-aware clone
 // (SkeletonUtils.clone, not a plain clone - required for skinned meshes) so
 // each can run its own animation independently
-const enemyTextureLoader = new THREE.TextureLoader();
 const ENEMY_MODEL_SCALE = 0.0051; // Kenney's character FBX is modeled in cm-ish units
 const ENEMY_HEIGHT_BASE = 1.9; // approx world-space height of a scale:1 enemy, used for headshot judging
 let enemyTemplate = null; // { object, runClip }
@@ -1777,6 +1776,66 @@ fbxLoader.load(
   (err) => console.error('failed to load enemy run animation', err)
 );
 
+// Kenney's zombie skins are flat cel-shaded cartoon colors. Regrime them once
+// per skin on a canvas (shared by every enemy of that skin): desaturate and
+// darken, mottle with soft dirt blotches, add dark blood streaks and fine
+// grain, and use a separate noise canvas as a bump map for rough skin.
+const enemySkinCache = {};
+function enemySkin(file) {
+  if (enemySkinCache[file]) return enemySkinCache[file];
+  const S = 1024;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = bumpCanvas.height = 256;
+  const bctx = bumpCanvas.getContext('2d');
+  const noise = bctx.createImageData(256, 256);
+  for (let i = 0; i < noise.data.length; i += 4) {
+    noise.data[i] = noise.data[i + 1] = noise.data[i + 2] = Math.random() * 255;
+    noise.data[i + 3] = 255;
+  }
+  bctx.putImageData(noise, 0, 0);
+  const bump = new THREE.CanvasTexture(bumpCanvas);
+
+  const img = new Image();
+  img.onload = () => {
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, S, S);
+    const blot = (n, rgb, alpha, rx, ry) => {
+      ctx.globalCompositeOperation = 'multiply';
+      for (let i = 0; i < n; i++) {
+        const x = Math.random() * S;
+        const y = Math.random() * S;
+        const r = rx * (0.5 + Math.random());
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(${rgb},${alpha})`);
+        g.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = g;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1, ry / rx);
+        ctx.translate(-x, -y);
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        ctx.restore();
+      }
+    };
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = 'rgba(128,128,128,0.4)';
+    ctx.fillRect(0, 0, S, S);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgb(205,200,192)';
+    ctx.fillRect(0, 0, S, S);
+    blot(50, '70,55,40', 0.3, 38, 38); // dirt
+    blot(22, '120,25,25', 0.6, 12, 50); // blood streaks (tall, thin)
+    ctx.globalCompositeOperation = 'source-over';
+    map.needsUpdate = true;
+  };
+  img.src = 'assets/enemy/' + file;
+  return (enemySkinCache[file] = { map, bump });
+}
+
 function buildEnemyMesh(kindDef) {
   const group = new THREE.Group();
   group.userData.flashMats = [];
@@ -1785,12 +1844,14 @@ function buildEnemyMesh(kindDef) {
     const model = SkeletonUtils.clone(enemyTemplate.object);
     model.scale.setScalar(ENEMY_MODEL_SCALE * kindDef.scale);
 
-    const tex = enemyTextureLoader.load('assets/enemy/' + kindDef.skin);
+    const skin = enemySkin(kindDef.skin);
     const mat = new THREE.MeshStandardMaterial({
-      map: tex,
+      map: skin.map,
+      bumpMap: skin.bump,
+      bumpScale: 0.35,
       color: kindDef.tint,
       emissive: kindDef.emissive,
-      roughness: 0.85,
+      roughness: 1,
     });
     model.traverse((child) => {
       if (child.isMesh) {
@@ -2526,4 +2587,5 @@ applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();
+
 
