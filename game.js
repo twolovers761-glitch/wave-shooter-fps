@@ -277,6 +277,30 @@ function loadModelInto(container, url, { scale = 1, position = [0, 0, 0], rotati
   );
 }
 
+const fbxLoader = new FBXLoader();
+// Quaternius FBX guns: barrel along +X, cm-ish units, each with its own pivot.
+// Turns the barrel onto -Z, scales to `length` meters and aligns every gun
+// (rear end at z=+0.1, centered on x/y) so they all share one anchor; onFit
+// gets the fitted bounds so muzzle flash / hand placement can be derived.
+function loadGun(container, file, length, onFit) {
+  fbxLoader.load(`assets/guns-real/${file}.fbx`, (obj) => {
+    obj.rotation.y = Math.PI / 2;
+    obj.traverse((c) => {
+      if (!c.isMesh) return;
+      for (const m of Array.isArray(c.material) ? c.material : [c.material]) m.color.convertLinearToSRGB();
+    });
+    obj.updateMatrixWorld(true);
+    const raw = new THREE.Box3().setFromObject(obj);
+    obj.scale.setScalar(length / (raw.max.z - raw.min.z));
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const c = box.getCenter(new THREE.Vector3());
+    obj.position.set(-c.x, -c.y, 0.1 - box.max.z);
+    container.add(obj);
+    onFit({ rear: 0.1, front: 0.1 - length, height: box.max.y - box.min.y });
+  });
+}
+
 // ---------- basic setup ----------
 const scene = new THREE.Scene();
 const FOG_COLOR = 0x0d1420;
@@ -724,57 +748,40 @@ buildLevel(selectedLevelKey);
 // code nudges; each gun gets its own "anchor" group with a fixed resting
 // offset that exists immediately, so the rest of the game can wire up
 // visibility/animation before its GLB model has actually finished loading.
-const GUN_MODEL_SCALE = 0.35;
-
 const gunGroup = new THREE.Group();
 
-// with the weapon camera's own near plane handling close-up clipping now,
-// these can sit at a normal, close FPS viewmodel distance again
-const gunModel = new THREE.Group();
-gunModel.position.set(0.2, -0.11, -0.32);
-gunGroup.add(gunModel);
-loadModelInto(gunModel, 'assets/guns/blaster-a.glb', { scale: GUN_MODEL_SCALE });
-
-const rifleModel = new THREE.Group();
-rifleModel.position.set(0.2, -0.11, -0.32);
-rifleModel.visible = false;
-gunGroup.add(rifleModel);
-// blaster-e's own pivot sits far toward its front/muzzle end (unlike the
-// other blasters, which are centered on themselves) - this local offset
-// cancels that bias so it behaves like the rest
-loadModelInto(rifleModel, 'assets/guns/blaster-e.glb', { scale: GUN_MODEL_SCALE, position: [0, 0, -0.32] });
-
-const shotgunModel = new THREE.Group();
-shotgunModel.position.set(0.2, -0.11, -0.32);
-shotgunModel.visible = false;
-gunGroup.add(shotgunModel);
-loadModelInto(shotgunModel, 'assets/guns/blaster-p.glb', { scale: GUN_MODEL_SCALE });
-
-const burstModel = new THREE.Group();
-burstModel.position.set(0.2, -0.11, -0.32);
-burstModel.visible = false;
-gunGroup.add(burstModel);
-loadModelInto(burstModel, 'assets/guns/blaster-j.glb', { scale: GUN_MODEL_SCALE * 1.45 }); // blaster-j is modeled smaller than the others
-
-const sniperModel = new THREE.Group();
-sniperModel.position.set(0.2, -0.11, -0.32);
-sniperModel.visible = false;
-gunGroup.add(sniperModel);
-loadModelInto(sniperModel, 'assets/guns/blaster-o.glb', { scale: GUN_MODEL_SCALE });
-// scope-large-a and silencer-larger both have their own pivot offset from
-// their mesh (like blaster-e's off-center pivot) - naive placement left the
-// scope floating with a gap above the rail and the silencer floating nearly
-// half a unit ahead of the barrel with a big visible gap, disconnected from
-// the rest of the gun. Both offsets below were measured (bounding-box
-// comparison against blaster-o's own body) so each sits flush against it.
-loadModelInto(sniperModel, 'assets/guns/scope-large-a.glb', {
-  scale: GUN_MODEL_SCALE,
-  position: [0, 0.063, -0.04],
-});
-loadModelInto(sniperModel, 'assets/guns/silencer-larger.glb', {
-  scale: GUN_MODEL_SCALE,
-  position: [0, 0.01, -0.068],
-});
+// every gun gets the same anchor (see loadGun) - its muzzle flash and the
+// hand's grip spot are derived from the fitted bounds once it has loaded
+const GUN_ANCHOR = [0.2, -0.13, -0.45];
+const GUN_FILES = {
+  // file, length (m), where the trigger hand grips (fraction of length forward from the rear)
+  pistol: ['Pistol_2', 0.24, 0.15],
+  rifle: ['AssaultRifle_2', 0.6, 0.3],
+  shotgun: ['Shotgun_2', 0.62, 0.3],
+  burst: ['AssaultRifle2_1', 0.5, 0.3],
+  sniper: ['SniperRifle_2', 0.78, 0.3],
+};
+const GUN_YAW = 0.12; // angled slightly toward the crosshair so the barrel's length reads instead of pointing straight away
+const gunModelsById = {};
+for (const id in GUN_FILES) {
+  const [file, length, gripFrac] = GUN_FILES[id];
+  const g = new THREE.Group();
+  g.position.set(...GUN_ANCHOR);
+  g.rotation.y = GUN_YAW;
+  g.visible = id === 'pistol';
+  gunGroup.add(g);
+  gunModelsById[id] = g;
+  loadGun(g, file, length, (f) => {
+    g.updateMatrix();
+    const m = new THREE.Vector3(0, f.height * 0.25, f.front).applyMatrix4(g.matrix);
+    GUN_CATALOG[id].muzzle = { x: m.x, y: m.y, z: m.z };
+    const hand = buildGripHand();
+    hand.position.set(0, -f.height * 0.28, f.rear - length * gripFrac);
+    g.add(hand);
+    applyEquippedGunModel();
+  });
+}
+const { pistol: gunModel, rifle: rifleModel, shotgun: shotgunModel, burst: burstModel, sniper: sniperModel } = gunModelsById;
 
 // a simple stylized hand+sleeve (primitives, no hand asset in the kit) so
 // the weapon doesn't look like it's floating in mid-air on its own. Built
@@ -832,15 +839,40 @@ function buildHand() {
   return group;
 }
 
-const gunHand = buildHand();
-// grips from underneath the gun rather than sitting in front of it - it used
-// to sit almost directly between the camera and the barrel (same x/y as the
-// gun, just closer), which eclipsed the whole barrel for the longer guns
-// (the sniper especially, since its silencer was invisible behind the hand)
-gunHand.position.set(0.17, -0.24, -0.27);
-gunHand.rotation.y = -0.3;
-gunHand.rotation.x = 0.15;
-gunGroup.add(gunHand);
+
+// right hand wrapped around a gun's pistol grip, built around the grip point
+// (origin): palm on the grip's right side, four two-segment fingers curling
+// around its front so the tips show on the left, thumb along the near side,
+// forearm trailing off toward the bottom-right of the screen
+function buildGripHand() {
+  const g = new THREE.Group();
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc98f5e, roughness: 0.7 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: 0x262b33, roughness: 0.85 });
+  const part = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
+    g.add(m);
+    return m;
+  };
+  part(new THREE.SphereGeometry(0.034, 12, 10), skin, 0.028, 0, 0.012).scale.set(0.8, 1.25, 1);
+  for (let i = 0; i < 4; i++) {
+    const y = 0.03 - i * 0.02;
+    part(new THREE.CapsuleGeometry(0.0095, 0.03, 3, 8), skin, 0.022, y, -0.026, Math.PI / 2); // along the grip's side
+    part(new THREE.CapsuleGeometry(0.0085, 0.028, 3, 8), skin, 0.002, y, -0.047, 0, 0, Math.PI / 2); // curling across its front
+  }
+  part(new THREE.CapsuleGeometry(0.011, 0.035, 3, 8), skin, 0.03, 0.05, -0.02, Math.PI / 2 + 0.2, 0, 0.15); // thumb
+  const dir = new THREE.Vector3(1, -0.8, 1.2).normalize();
+  const arm = (r0, r1, len, at, mat) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 12), mat);
+    m.position.copy(dir).multiplyScalar(at).add(new THREE.Vector3(0.03, -0.01, 0.03));
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    g.add(m);
+  };
+  arm(0.03, 0.034, 0.07, 0.05, skin); // wrist
+  arm(0.04, 0.046, 0.3, 0.2, sleeve); // sleeve
+  return g;
+}
 
 // parented to weaponCamera (not weaponScene) so it rides along with the
 // player automatically - weaponScene coordinates are world space, and these
@@ -1174,13 +1206,6 @@ const GUN_CATALOG = {
     reloadTime: 2.4,
     muzzle: { x: 0.2, y: -0.002, z: -0.919 },
   },
-};
-const gunModelsById = {
-  pistol: gunModel,
-  rifle: rifleModel,
-  shotgun: shotgunModel,
-  burst: burstModel,
-  sniper: sniperModel,
 };
 
 // the reload animation dips the whole equipped gun's anchor group (rather
@@ -1674,7 +1699,6 @@ function pickEnemyKind(currentWave) {
 // loaded once and cached; every spawned enemy is a skeleton-aware clone
 // (SkeletonUtils.clone, not a plain clone - required for skinned meshes) so
 // each can run its own animation independently
-const fbxLoader = new FBXLoader();
 const enemyTextureLoader = new THREE.TextureLoader();
 const ENEMY_MODEL_SCALE = 0.0051; // Kenney's character FBX is modeled in cm-ish units
 const ENEMY_HEIGHT_BASE = 1.9; // approx world-space height of a scale:1 enemy, used for headshot judging
@@ -2318,7 +2342,7 @@ function animate() {
   // notice the mismatch since it's a completely separate render pass.
   weaponCamera.position.copy(camera.position);
   weaponCamera.quaternion.copy(camera.quaternion);
-  const targetWeaponFov = Math.min(120, camera.fov + 35);
+  const targetWeaponFov = camera.fov + 5;
   if (weaponCamera.fov !== targetWeaponFov) {
     weaponCamera.fov = targetWeaponFov;
     weaponCamera.updateProjectionMatrix();
@@ -2449,3 +2473,4 @@ applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();
+
