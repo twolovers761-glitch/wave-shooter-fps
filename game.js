@@ -8,6 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 // ---------- audio ----------
 // every sound is synthesized with the Web Audio API (oscillators + filtered
@@ -348,12 +349,13 @@ renderer.toneMappingExposure = 1.3;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 const composer = new EffectComposer(
   renderer,
-  new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 })
+  new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType })
 );
 composer.addPass(new RenderPass(scene, camera));
-// bloom is blurry by nature, so it runs at half resolution; the whole chain
-// renders at CSS pixels (not device pixels) - the expensive part on hi-DPI screens
-composer.setPixelRatio(1);
+// the whole chain renders at <= 900px tall (scaled up to the screen) - the
+// expensive part on big / hi-DPI screens; bloom is blurry anyway
+const renderScale = () => Math.min(1, Math.max(0.6, 900 / window.innerHeight));
+composer.setPixelRatio(renderScale());
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.35, 0.7, 0.8);
 composer.addPass(bloomPass);
 const gradePass = new ShaderPass({
@@ -372,6 +374,14 @@ const gradePass = new ShaderPass({
 });
 composer.addPass(gradePass);
 composer.addPass(new OutputPass());
+// MSAA on the HDR target is too costly on weaker GPUs; FXAA on the final image is one cheap pass
+const fxaaPass = new ShaderPass(FXAAShader);
+composer.addPass(fxaaPass);
+function updateFxaa() {
+  const pr = renderScale();
+  fxaaPass.uniforms.resolution.value.set(1 / (window.innerWidth * pr), 1 / (window.innerHeight * pr));
+}
+updateFxaa();
 let postQuality = 2; // 2 = full, 1 = no bloom, 0 = plain render (see animate)
 let frameTimeSum = 0;
 let frameCount = 0;
@@ -382,7 +392,9 @@ window.addEventListener('resize', () => {
   weaponCamera.aspect = camera.aspect;
   weaponCamera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setPixelRatio(renderScale());
   composer.setSize(window.innerWidth, window.innerHeight);
+  updateFxaa();
 });
 
 // hit flash overlay
@@ -400,7 +412,7 @@ scene.add(hemiLight);
 const dirLight = new THREE.DirectionalLight(0xfff0d8, 1.25);
 dirLight.position.set(10, 20, 8);
 dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.mapSize.set(1024, 1024);
 dirLight.shadow.camera.left = -30;
 dirLight.shadow.camera.right = 30;
 dirLight.shadow.camera.top = 30;
@@ -2453,10 +2465,11 @@ function animate() {
   // auto-degrade on slow machines: every 90 frames, if the average is under
   // ~40fps drop bloom first, then the whole post-processing chain
   frameTimeSum += delta;
-  if (++frameCount === 90) {
-    if (frameTimeSum / 90 > 1 / 40 && postQuality > 0) {
+  if (++frameCount === 60) {
+    if (frameTimeSum / 60 > 1 / 50 && postQuality > 0) {
       postQuality--;
       bloomPass.enabled = postQuality > 1;
+      if (postQuality === 0) renderer.setPixelRatio(1);
     }
     frameTimeSum = frameCount = 0;
   }
@@ -2587,5 +2600,6 @@ applyEquippedGunModel();
 setWeapon('gun');
 updateHUD();
 animate();
+
 
 
