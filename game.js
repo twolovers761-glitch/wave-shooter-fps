@@ -436,26 +436,31 @@ const COVER_VARIANTS = [
 ];
 const DECOR_FILES = ['chair.glb', 'table.glb', 'computer.glb'];
 
-// procedural noise texture so the floor/walls aren't flat, solid color
-function makeNoiseTexture(baseColor, noiseColor, size, cell) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(0, 0, size, size);
-  for (let y = 0; y < size; y += cell) {
-    for (let x = 0; x < size; x += cell) {
-      if (Math.random() > 0.55) {
-        ctx.fillStyle = noiseColor;
-        ctx.globalAlpha = 0.08 + Math.random() * 0.12;
-        ctx.fillRect(x, y, cell, cell);
-      }
-    }
+// CC0 PBR materials from ambientCG (assets/tex): color + normal + roughness,
+// tinted per level theme; textures are cached so rebuilding a level is free
+const texLoader = new THREE.TextureLoader();
+const texCache = {};
+function loadTex(file, srgb) {
+  if (!texCache[file]) {
+    const t = texLoader.load(`assets/tex/${file}.jpg`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    texCache[file] = t;
   }
-  ctx.globalAlpha = 1;
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
+  return texCache[file];
+}
+function pbrMaterial(name, repeatX, repeatY, tint) {
+  const maps = { map: [`${name}_Color`, true], normalMap: [`${name}_NormalGL`], roughnessMap: [`${name}_Roughness`] };
+  const params = { color: tint, roughness: 1 };
+  for (const key in maps) {
+    // clone so each material can have its own repeat while sharing the image
+    const t = loadTex(...maps[key]).clone();
+    t.repeat.set(repeatX, repeatY);
+    t.needsUpdate = true;
+    params[key] = t;
+  }
+  return new THREE.MeshStandardMaterial(params);
 }
 
 // ---------- level themes ----------
@@ -469,10 +474,9 @@ const LEVEL_THEMES = {
     skyTop: 0x142238,
     skyBottom: 0x0d1420,
     skyGlow: 0x2d5a7a,
-    groundBase: '#262e3c',
-    groundNoise: '#3a4658',
-    wallBase: '#333f52',
-    wallNoise: '#455872',
+    floorTex: 'Concrete036',
+    floorTint: 0x9aa7b8,
+    wallTint: 0x8793a6,
     coverColor: 0x4a5568,
     barrelColor: 0x5c4a34,
     platformColor: 0x384252,
@@ -486,10 +490,9 @@ const LEVEL_THEMES = {
     skyTop: 0x4a3018,
     skyBottom: 0x2a1d10,
     skyGlow: 0xd98f3d,
-    groundBase: '#4a3a24',
-    groundNoise: '#63512f',
-    wallBase: '#6b5636',
-    wallNoise: '#82683f',
+    floorTex: 'Ground054',
+    floorTint: 0xd9b98a,
+    wallTint: 0xc9a877,
     coverColor: 0x8a7452,
     barrelColor: 0x6b5030,
     platformColor: 0x7a6440,
@@ -503,10 +506,9 @@ const LEVEL_THEMES = {
     skyTop: 0x1c2e1a,
     skyBottom: 0x0e150e,
     skyGlow: 0x5fbf3d,
-    groundBase: '#1e2a1c',
-    groundNoise: '#2c3e28',
-    wallBase: '#2a3428',
-    wallNoise: '#3c4c34',
+    floorTex: 'Concrete036',
+    floorTint: 0x9fb59a,
+    wallTint: 0x7f9a78,
     coverColor: 0x445540,
     barrelColor: 0x3d5c2e,
     platformColor: 0x37452f,
@@ -607,9 +609,7 @@ function buildLevel(themeKey) {
   levelGroup.add(new THREE.Mesh(new THREE.SphereGeometry(180, 24, 16), skyMat));
 
   // ground
-  const groundTex = makeNoiseTexture(theme.groundBase, theme.groundNoise, 256, 8);
-  groundTex.repeat.set(ARENA_SIZE, ARENA_SIZE);
-  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95 });
+  const groundMat = pbrMaterial(theme.floorTex, ARENA_SIZE / 2, ARENA_SIZE / 2, theme.floorTint);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_SIZE * 2, ARENA_SIZE * 2), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -623,9 +623,7 @@ function buildLevel(themeKey) {
   levelGroup.add(grid);
 
   // walls
-  const wallTex = makeNoiseTexture(theme.wallBase, theme.wallNoise, 256, 16);
-  wallTex.repeat.set(ARENA_SIZE / 2, 1.5);
-  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.85 });
+  const wallMat = pbrMaterial('Concrete034', ARENA_SIZE / 3, 2, theme.wallTint);
   const trimMat = new THREE.MeshStandardMaterial({
     color: theme.trimColor,
     emissive: theme.trimEmissive,
