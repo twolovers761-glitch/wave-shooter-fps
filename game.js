@@ -345,13 +345,17 @@ document.body.appendChild(renderer.domElement);
 // top of the result afterwards (see animate), straight to the screen.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.3;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 const composer = new EffectComposer(
   renderer,
   new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 })
 );
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.7, 0.8));
+// bloom is blurry by nature, so it runs at half resolution; the whole chain
+// renders at CSS pixels (not device pixels) - the expensive part on hi-DPI screens
+composer.setPixelRatio(1);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.35, 0.7, 0.8);
+composer.addPass(bloomPass);
 const gradePass = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, time: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -368,6 +372,9 @@ const gradePass = new ShaderPass({
 });
 composer.addPass(gradePass);
 composer.addPass(new OutputPass());
+let postQuality = 2; // 2 = full, 1 = no bloom, 0 = plain render (see animate)
+let frameTimeSum = 0;
+let frameCount = 0;
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -2384,8 +2391,19 @@ function animate() {
     weaponCamera.updateProjectionMatrix();
   }
 
+  // auto-degrade on slow machines: every 90 frames, if the average is under
+  // ~40fps drop bloom first, then the whole post-processing chain
+  frameTimeSum += delta;
+  if (++frameCount === 90) {
+    if (frameTimeSum / 90 > 1 / 40 && postQuality > 0) {
+      postQuality--;
+      bloomPass.enabled = postQuality > 1;
+    }
+    frameTimeSum = frameCount = 0;
+  }
   gradePass.uniforms.time.value = performance.now() % 1000;
-  composer.render();
+  if (postQuality > 0) composer.render();
+  else renderer.render(scene, camera);
   renderer.autoClear = false;
   renderer.clearDepth();
   renderer.render(weaponScene, weaponCamera);
